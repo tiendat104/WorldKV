@@ -24,3 +24,26 @@ so every scene generates 464 x 848 videos with `--size 480*832`.
 
 `prompts.json` follows the format of `examples/new/prompts.json`. Prompts
 other than `00` were written by us in the same style.
+
+## Trajectories
+
+Three trajectories in `traj/`, named like the authors' demo videos. The number
+at the end is the `--frame_num` to pass to `generate_fast.py`.
+
+| Trajectory | Camera | Video frames | Pairs (long / short / sink) |
+|---|---|---|---|
+| `R_L_R_L_R_L90_360` | turn right/left three times | 357 | 206 / 60 / 45 |
+| `L_R_W_S_L_R90_318` | turn, walk forward and back, turn | 309 | 113 / 99 / 27 |
+| `WSRLRL90_245` | walk forward and back, then turn | 237 | 108 / 50 / 9 |
+
+In a trajectory name, `R`/`L` turn 90 deg (45 frames), `W`/`S` walk forward
+or back (24 frames) and `_` is a 16-frame pause. `R_L_R_L_R_L90_360` is a copy
+of the repo's `traj/` file; the other two were made with:
+
+```bash
+python generate_traj.py --frames 318 --trajectory L_R_W_S_L_R90 --noop-frames 16 --output-dir eval/benchmark/dev/traj
+python generate_traj.py --frames 245 --trajectory WSRLRL90 --output-dir eval/benchmark/dev/traj
+```
+
+With these settings, regenerating `R_L_R_L_R_L90_360` reproduces the repo's
+file exactly.
