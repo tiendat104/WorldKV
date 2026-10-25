@@ -6,5 +6,6 @@ torch>=2.4.0
 torchvision>=0.19.0
 imageio[ffmpeg]
 imageio-ffmpeg
-torchmetrics[image]   # PSNR, SSIM, LPIPS, FID, KID (FID/KID use torch-fidelity)
+torchmetrics[image]   # PSNR, SSIM, FID, KID (FID/KID use torch-fidelity)
+lpips                 # official LPIPS (Zhang et al. 2018), per-pair scores
 pytest
