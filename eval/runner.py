@@ -1,8 +1,9 @@
 """Run a benchmark: one video per (scene, trajectory) pair and method, then score.
 
-Phase 1 generates every missing video with WorldKV's generate_fast.py, or
-with a fake model on a laptop (--fake). Videos that already exist are
-skipped, so a stopped run can simply be restarted.
+Phase 1 generates every missing video with eval/worker.py, which loads the
+model once and then runs the same generation as WorldKV's generate_fast.py
+for each video; or with a fake model on a laptop (--fake). Videos that
+already exist are skipped, so a stopped run can simply be restarted.
 Phase 2 scores all videos and writes, in the output folder:
   results.csv  one row per run (scene, trajectory, method)
   summary.csv  one row per method, like Table 1 of the paper
@@ -112,11 +113,26 @@ def telemetry_path(out_dir, method, entry):
     return os.path.join(out_dir, "runs", method, run_name(entry) + ".telemetry.json")
 
 
-def build_command(entry, method, video, ckpt_dir, nproc=4, seed=42,
+def meta_path(out_dir, method, entry):
+    return os.path.join(out_dir, "runs", method, run_name(entry) + ".json")
+
+
+def launcher(nproc):
+    """How to start a program on `nproc` GPUs with this Python.
+
+    `python -m torch.distributed.run` is torchrun, but with this Python, so it
+    uses the same environment as the runner (a bare `torchrun` may belong to
+    the system Python instead).
+    """
+    if nproc > 1:
+        return [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={nproc}"]
+    return [sys.executable]
+
+
+def generate_args(entry, method, video, ckpt_dir, nproc=4, seed=42,
                   task="i2v-A14B", size="480*832"):
-    """The generate_fast.py command for one run (run it from the repo root)."""
-    cmd = [
-        "generate_fast.py",
+    """generate_fast.py's command-line arguments for one run."""
+    args = [
         "--task", task,
         "--size", size,
         "--ckpt_dir", ckpt_dir,
@@ -130,12 +146,19 @@ def build_command(entry, method, video, ckpt_dir, nproc=4, seed=42,
     ] + METHODS[method]
     if nproc > 1:
         # Same multi-GPU setup as run_retrieval_compress.sh: split heads across GPUs.
-        # `python -m torch.distributed.run` is torchrun, but with this Python, so
-        # it uses the same environment as the runner (a bare `torchrun` may
-        # belong to the system Python instead).
-        return ([sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={nproc}"]
-                + cmd + ["--dit_fsdp", "--t5_fsdp", "--ulysses_size", str(nproc)])
-    return [sys.executable] + cmd
+        args += ["--dit_fsdp", "--t5_fsdp", "--ulysses_size", str(nproc)]
+    return args
+
+
+def build_command(entry, method, video, ckpt_dir, nproc=4, seed=42):
+    """The equivalent stand-alone generate_fast.py command for one run.
+
+    Real runs go through eval/worker.py instead (same arguments, model loaded
+    once); this command is saved with each run so a single video can be
+    reproduced by hand from the repo root.
+    """
+    return (launcher(nproc) + ["generate_fast.py"]
+            + generate_args(entry, method, video, ckpt_dir, nproc, seed))
 
 
 def fake_generate(entry, video, seed=42):
@@ -152,54 +175,127 @@ def fake_generate(entry, video, seed=42):
     iio.imwrite(video, np.clip(image + noise, 0, 255).astype(np.uint8), fps=16)
 
 
-def generate_all(entries, methods, out_dir, args):
+def make_job(entry, method, out_dir, args):
+    """One video for eval/worker.py: generate_fast.py's arguments and output paths."""
+    video = video_path(out_dir, method, entry)
+    return {
+        "name": f"{method} {run_name(entry)}",
+        "argv": generate_args(entry, method, video, args.ckpt_dir, args.nproc, args.seed),
+        "save_file": video,
+        "telemetry": telemetry_path(out_dir, method, entry),
+        "meta": meta_path(out_dir, method, entry),
+        "meta_fields": {
+            "scene": entry["scene"],
+            "trajectory": entry["trajectory"],
+            "method": method,
+            "fake": False,
+            "seed": args.seed,
+            "nccl_p2p_disabled": bool(args.no_p2p),
+            "command": build_command(entry, method, video, args.ckpt_dir, args.nproc, args.seed),
+        },
+    }
+
+
+def launch_worker(jobs_file, log_path, args):
+    """Run eval/worker.py on the jobs file; copy its output to the log, echo progress."""
+    cmd = launcher(args.nproc) + ["-m", "eval.worker", jobs_file]
+    env = dict(os.environ)
+    if args.no_p2p:
+        env["NCCL_P2P_DISABLE"] = "1"
+    with open(log_path, "w") as log:
+        proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        for line in proc.stdout:
+            log.write(line)
+            if "[job]" in line or "Model loaded once" in line:
+                print("   " + line.strip().split("INFO: ")[-1], flush=True)
+        return proc.wait()
+
+
+def read_json(path):
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def run_jobs(jobs, out_dir, args, launch=launch_worker):
+    """Generate all jobs with as few model loads as possible.
+
+    One worker loads the model and runs every job. If it stops early (e.g. a
+    video runs out of GPU memory), the job it was on is marked failed and a
+    new worker runs the rest.
+    """
+    failed = set()
+    attempt = 0
+    while True:
+        todo = [j for j in jobs if not os.path.exists(j["save_file"]) and j["name"] not in failed]
+        if not todo:
+            break
+        attempt += 1
+        jobs_file = os.path.join(out_dir, "runs", f"jobs_{attempt}.json")
+        log_path = os.path.join(out_dir, "runs", f"worker_{attempt}.log")
+        os.makedirs(os.path.dirname(jobs_file), exist_ok=True)
+        with open(jobs_file, "w") as f:
+            json.dump(todo, f, indent=1)
+        print(f"[worker] {len(todo)} videos, model loaded once (log: {log_path})", flush=True)
+        returncode = launch(jobs_file, log_path, args)
+
+        progress = False
+        for job in todo:
+            meta = read_json(job["meta"]) or {}
+            if os.path.exists(job["save_file"]):
+                progress = True
+            elif meta.get("status") == "running":
+                # The worker stopped during this job.
+                meta.update(status="failed", returncode=returncode, log=log_path)
+                with open(job["meta"], "w") as f:
+                    json.dump(meta, f, indent=1)
+                failed.add(job["name"])
+                progress = True
+                print(f"[fail] {job['name']}: worker exit code {returncode}, see {log_path}")
+        if not progress:
+            print(f"[fail] worker exit code {returncode} before finishing any video, "
+                  f"see {log_path}")
+            break
+
+
+def generate_all(entries, methods, out_dir, args, launch=launch_worker):
     """Phase 1: make every missing video. Each run's settings go to runs/*.json."""
+    jobs = []
     for method in methods:
         for entry in entries:
             video = video_path(out_dir, method, entry)
-            meta_path = os.path.join(out_dir, "runs", method, run_name(entry) + ".json")
             if os.path.exists(video):
                 print(f"[skip] {method} {run_name(entry)}: video exists")
                 continue
             os.makedirs(os.path.dirname(video), exist_ok=True)
-            os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+            os.makedirs(os.path.dirname(meta_path(out_dir, method, entry)), exist_ok=True)
 
-            cmd = None if args.fake else build_command(
-                entry, method, video, args.ckpt_dir, args.nproc, args.seed)
-            if args.dry_run:
-                print(shlex.join(cmd) if cmd else f"[fake] {method} {run_name(entry)}")
+            if args.fake:
+                if args.dry_run:
+                    print(f"[fake] {method} {run_name(entry)}")
+                    continue
+                print(f"[run]  {method} {run_name(entry)}", flush=True)
+                start = time.time()
+                fake_generate(entry, video, args.seed)
+                with open(meta_path(out_dir, method, entry), "w") as f:
+                    json.dump({"scene": entry["scene"], "trajectory": entry["trajectory"],
+                               "method": method, "fake": True, "seed": args.seed,
+                               "status": "done",
+                               "wall_time_s": round(time.time() - start, 1)}, f, indent=1)
                 continue
 
-            print(f"[run]  {method} {run_name(entry)}", flush=True)
-            start = time.time()
-            if args.fake:
-                fake_generate(entry, video, args.seed)
-                returncode = 0
-            else:
-                log_path = os.path.join(out_dir, "runs", method, run_name(entry) + ".log")
-                # Tells eval/telemetry.py (inside generate_fast.py) where to save timing/memory.
-                env = dict(os.environ, **{ENV_VAR: telemetry_path(out_dir, method, entry)})
-                if args.no_p2p:
-                    env["NCCL_P2P_DISABLE"] = "1"
-                with open(log_path, "w") as log:
-                    returncode = subprocess.call(cmd, cwd=REPO_ROOT, env=env, stdout=log,
-                                                 stderr=subprocess.STDOUT)
-            meta = {
-                "scene": entry["scene"],
-                "trajectory": entry["trajectory"],
-                "method": method,
-                "fake": args.fake,
-                "seed": args.seed,
-                "nccl_p2p_disabled": bool(args.no_p2p),
-                "command": cmd,
-                "returncode": returncode,
-                "wall_time_s": round(time.time() - start, 1),
-            }
-            with open(meta_path, "w") as f:
-                json.dump(meta, f, indent=1)
-            if returncode != 0:
-                print(f"[fail] {method} {run_name(entry)}: exit code {returncode}, "
-                      f"see {meta_path.replace('.json', '.log')}")
+            job = make_job(entry, method, out_dir, args)
+            if args.dry_run:
+                print(shlex.join(job["meta_fields"]["command"]))
+            jobs.append(job)
+
+    if args.dry_run and jobs:
+        print(f"(real runs use one worker for all {len(jobs)} videos: "
+              f"{shlex.join(launcher(args.nproc) + ['-m', 'eval.worker', 'JOBS.json'])})")
+    if jobs and not args.dry_run:
+        run_jobs(jobs, out_dir, args, launch)
 
 
 def read_telemetry(path):
@@ -233,13 +329,13 @@ def score_all(entries, methods, out_dir, device, use_fid=True):
         ok_rows = []
         for entry in entries:
             row = {"scene": entry["scene"], "trajectory": entry["trajectory"], "method": method}
-            meta_path = os.path.join(out_dir, "runs", method, run_name(entry) + ".json")
-            if os.path.exists(meta_path):
-                with open(meta_path) as f:
-                    row["wall_time_s"] = json.load(f).get("wall_time_s")
+            meta = read_json(meta_path(out_dir, method, entry)) or {}
+            # Generation time of this video; the model load is counted once per worker.
+            row["wall_time_s"] = meta.get("wall_time_s")
+            row["model_load_s"] = meta.get("model_load_s")
             video = video_path(out_dir, method, entry)
             if not os.path.exists(video):
-                row["status"] = "missing"
+                row["status"] = meta.get("status", "missing")
                 results.append(row)
                 continue
 

@@ -1,4 +1,5 @@
 import argparse
+import ast
 import importlib.util
 import json
 import os
@@ -75,6 +76,60 @@ def test_short_videos_rejected_for_worldkv(tmp_path):
     runner.check_video_lengths(runner.load_benchmark(DEV_BENCHMARK), ["gpu_only"])
     smoke = os.path.join(runner.REPO_ROOT, "eval", "benchmark", "smoke", "benchmark.json")
     runner.check_video_lengths(runner.load_benchmark(smoke), ["gpu_only"])
+
+
+def generate_call_keywords(path):
+    """Keyword names of the `.generate(...)` call in a source file."""
+    with open(path) as f:
+        tree = ast.parse(f.read())
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Attribute) and n.func.attr == "generate"]
+    assert len(calls) == 1, path
+    return {k.arg for k in calls[0].keywords}
+
+
+def test_worker_calls_generate_like_generate_fast():
+    # eval/worker.py must pass the same settings to generate() as
+    # generate_fast.py, so both make the same videos.
+    worker = generate_call_keywords(os.path.join(runner.REPO_ROOT, "eval", "worker.py"))
+    reference = generate_call_keywords(os.path.join(runner.REPO_ROOT, "generate_fast.py"))
+    assert worker == reference
+
+
+def test_worker_restarted_after_a_crash(tmp_path):
+    entries = runner.load_benchmark(DEV_BENCHMARK)[:3]
+    out = str(tmp_path / "out")
+    args = argparse.Namespace(fake=False, dry_run=False, seed=42, ckpt_dir="/ckpt",
+                              nproc=4, no_p2p=True)
+    jobs = [runner.make_job(e, "sliding", out, args) for e in entries]
+    calls = []
+
+    def fake_worker(jobs_file, log_path, args):
+        # Finishes the first job it gets and stops (crashes) on the second.
+        with open(jobs_file) as f:
+            todo = json.load(f)
+        calls.append([j["name"] for j in todo])
+        for k, job in enumerate(todo):
+            os.makedirs(os.path.dirname(job["meta"]), exist_ok=True)
+            with open(job["meta"], "w") as f:
+                json.dump({"status": "running"}, f)
+            if k == 1 and len(calls) == 1:
+                return 1
+            os.makedirs(os.path.dirname(job["save_file"]), exist_ok=True)
+            open(job["save_file"], "w").close()
+            with open(job["meta"], "w") as f:
+                json.dump({"status": "done"}, f)
+        return 0
+
+    runner.run_jobs(jobs, out, args, launch=fake_worker)
+    names = [j["name"] for j in jobs]
+    # First worker: all 3 jobs; it crashes on job 2. Second worker: only job 3.
+    assert calls == [names, names[2:]]
+    assert os.path.exists(jobs[0]["save_file"]) and os.path.exists(jobs[2]["save_file"])
+    with open(jobs[1]["meta"]) as f:
+        assert json.load(f)["status"] == "failed"
+    # Each job carries the same arguments a stand-alone generate_fast.py run would get.
+    assert jobs[0]["meta_fields"]["command"][-len(jobs[0]["argv"]):] == jobs[0]["argv"]
 
 
 def make_tiny_benchmark(root):

@@ -34,6 +34,7 @@ Code lives in this folder so that changes to WorldKV's own files stay small
 | `pairing.py` | Finds (first visit, revisit) frame pairs from a trajectory's poses |
 | `metrics.py` | PSNR, SSIM, LPIPS per pair; FID/KID over sets of frames |
 | `runner.py` | Generates one video per (scene, trajectory) pair and method, then scores them all |
+| `worker.py` | Loads the model once and generates a list of videos (started by `runner.py`) |
 | `telemetry.py` | Per-chunk timing (FPS) and GPU/CPU memory, called from WorldKV's generation loop |
 | `benchmark/dev/` | Dev test set: 5 scenes, 3 trajectories, `benchmark.json` |
 | `tests/` | Tests (`python -m pytest eval/tests`) |
@@ -76,6 +77,27 @@ Without the environment variable, nothing is recorded.
 
 In the tables, `fps_last_chunk` matches the paper's FPS, and
 `peak_gpu_mem_gb` is the largest peak among the GPUs.
+
+## Loading the model once
+
+Loading LingBot takes minutes, so the runner does not start `generate_fast.py`
+once per video. It writes the list of missing videos to
+`<out>/runs/jobs_<n>.json` and starts one `eval/worker.py`, which loads the
+model once and generates them one after another. Each job holds the same
+arguments `generate_fast.py` would get, parsed by `generate_fast.py`'s own
+parser and passed to the same `generate()` call (a test checks that the two
+calls match). The equivalent stand-alone command is saved in each run's
+`<out>/runs/<method>/<run>.json`. If the worker stops during a video (e.g.
+out of GPU memory), that video is marked `failed` and a new worker runs the
+rest. Worker output goes to `<out>/runs/worker_<n>.log`.
+
+## Machine notes
+
+- On machines where GPUs are linked only by PCIe (e.g. RunPod 4x A40), the
+  GPUs can hang when copying to each other directly. Pass `--no-p2p`
+  (sets `NCCL_P2P_DISABLE=1`). Do not use it on NVLink machines (H200).
+- WorldKV needs videos of at least 27 latent frames (about 110 video frames);
+  the runner refuses shorter ones.
 
 ## Restarting
 
