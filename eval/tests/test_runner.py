@@ -6,6 +6,7 @@ import re
 
 import imageio.v3 as iio
 import numpy as np
+import pytest
 import torch
 
 from eval import runner
@@ -44,7 +45,7 @@ def test_commands_use_known_flags_and_one_kv_mode():
     entry = runner.load_benchmark(DEV_BENCHMARK)[0]
     for method in runner.METHODS:
         cmd = runner.build_command(entry, method, "/tmp/x.mp4", "/ckpt", nproc=4)
-        assert cmd[:2] == ["torchrun", "--nproc_per_node=4"]
+        assert cmd[1:4] == ["-m", "torch.distributed.run", "--nproc_per_node=4"]
         flags = {a for a in cmd if a.startswith("--") and not a.startswith("--nproc")}
         assert flags <= known, flags - known
         validate_kv_mode_flags(
@@ -62,6 +63,18 @@ def test_worldkv_settings_match_paper():
     assert flag_value(gpu, "--kv_compression_keep_ratio") == "0.25"  # 3 -> 1.5 frames
     # GPU-only and CPU-only differ only in where the KV bank is stored.
     assert [a for a in gpu if a != "--kv_bank_on_gpu"] == cpu
+
+
+def test_short_videos_rejected_for_worldkv(tmp_path):
+    entries = runner.load_benchmark(make_tiny_benchmark(str(tmp_path / "bench")))
+    # 100 frames = 24 latent frames, below WorldKV's 27-frame window.
+    with pytest.raises(ValueError, match="latent frames"):
+        runner.check_video_lengths(entries, ["sliding", "gpu_only"])
+    runner.check_video_lengths(entries, ["sliding", "full_kv"])  # no retrieval: fine
+    # The dev and smoke benchmarks are long enough.
+    runner.check_video_lengths(runner.load_benchmark(DEV_BENCHMARK), ["gpu_only"])
+    smoke = os.path.join(runner.REPO_ROOT, "eval", "benchmark", "smoke", "benchmark.json")
+    runner.check_video_lengths(runner.load_benchmark(smoke), ["gpu_only"])
 
 
 def make_tiny_benchmark(root):
@@ -88,7 +101,8 @@ def make_tiny_benchmark(root):
 def test_fake_run_end_to_end(tmp_path):
     entries = runner.load_benchmark(make_tiny_benchmark(str(tmp_path / "bench")))
     out = str(tmp_path / "out")
-    args = argparse.Namespace(fake=True, dry_run=False, seed=42, ckpt_dir=None, nproc=1)
+    args = argparse.Namespace(fake=True, dry_run=False, seed=42, ckpt_dir=None, nproc=1,
+                              no_p2p=False)
     methods = ["sliding", "gpu_only"]
 
     runner.generate_all(entries, methods, out, args)

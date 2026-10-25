@@ -1,0 +1,12 @@
+{
+  "name": "smoke",
+  "images_dir": "../dev/images",
+  "prompts": "../dev/prompts.json",
+  "traj_dir": "traj",
+  "pairs": [
+    {
+      "scene": "00",
+      "trajectory": "RL90_130"
+    }
+  ]
+}

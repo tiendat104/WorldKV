@@ -52,7 +52,28 @@ METHODS = {
     "gpu_only": WORLDKV_FLAGS + ["--kv_bank_on_gpu"],
     "cpu_only": WORLDKV_FLAGS,
 }
+RETRIEVAL_METHODS = ("gpu_only", "cpu_only")
+# WorldKV's attention window in latent frames: sink (3) + retrieved (18) +
+# recent (6), see image2video_fast.py. The code sizes "recent" as what is left
+# of the cache after sink and retrieval, and caps the cache at the video
+# length, so a shorter video silently loses the previous chunk from "recent".
+WORLDKV_WINDOW_LATENT = 3 + 18 + 6
 METRIC_GROUPS = ("all", "long")
+
+
+def check_video_lengths(entries, methods):
+    """Refuse WorldKV runs on videos shorter than its attention window."""
+    if not any(m in RETRIEVAL_METHODS for m in methods):
+        return
+    for entry in entries:
+        num_poses = len(pairing.load_poses(entry["traj_dir"]))
+        frames = pairing.num_video_frames(num_poses, entry["frame_num"])
+        latent = pairing.latent_index(frames - 1) + 1
+        if latent < WORLDKV_WINDOW_LATENT:
+            raise ValueError(
+                f"{run_name(entry)}: {latent} latent frames, but WorldKV needs at least "
+                f"{WORLDKV_WINDOW_LATENT} (about {4 * WORLDKV_WINDOW_LATENT} video frames). "
+                "Use a longer trajectory.")
 
 
 def load_benchmark(path):
@@ -109,8 +130,11 @@ def build_command(entry, method, video, ckpt_dir, nproc=4, seed=42,
     ] + METHODS[method]
     if nproc > 1:
         # Same multi-GPU setup as run_retrieval_compress.sh: split heads across GPUs.
-        return (["torchrun", f"--nproc_per_node={nproc}"] + cmd
-                + ["--dit_fsdp", "--t5_fsdp", "--ulysses_size", str(nproc)])
+        # `python -m torch.distributed.run` is torchrun, but with this Python, so
+        # it uses the same environment as the runner (a bare `torchrun` may
+        # belong to the system Python instead).
+        return ([sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={nproc}"]
+                + cmd + ["--dit_fsdp", "--t5_fsdp", "--ulysses_size", str(nproc)])
     return [sys.executable] + cmd
 
 
@@ -155,6 +179,8 @@ def generate_all(entries, methods, out_dir, args):
                 log_path = os.path.join(out_dir, "runs", method, run_name(entry) + ".log")
                 # Tells eval/telemetry.py (inside generate_fast.py) where to save timing/memory.
                 env = dict(os.environ, **{ENV_VAR: telemetry_path(out_dir, method, entry)})
+                if args.no_p2p:
+                    env["NCCL_P2P_DISABLE"] = "1"
                 with open(log_path, "w") as log:
                     returncode = subprocess.call(cmd, cwd=REPO_ROOT, env=env, stdout=log,
                                                  stderr=subprocess.STDOUT)
@@ -164,6 +190,7 @@ def generate_all(entries, methods, out_dir, args):
                 "method": method,
                 "fake": args.fake,
                 "seed": args.seed,
+                "nccl_p2p_disabled": bool(args.no_p2p),
                 "command": cmd,
                 "returncode": returncode,
                 "wall_time_s": round(time.time() - start, 1),
@@ -216,6 +243,7 @@ def score_all(entries, methods, out_dir, device, use_fid=True):
                 results.append(row)
                 continue
 
+            print(f"[score] {method} {run_name(entry)}", flush=True)
             pairs = pairing.build_pairs(entry["traj_dir"], entry["frame_num"])
             pair_rows = evaluate_video(read_video(video), pairs, pair_metrics, set_metrics)
             groups = summarize(pair_rows)
@@ -288,6 +316,10 @@ def main():
     parser.add_argument("--ckpt-dir", help="LingBot checkpoint folder (real runs).")
     parser.add_argument("--nproc", type=int, default=4, help="GPUs per run.")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--no-p2p", action="store_true",
+                        help="Set NCCL_P2P_DISABLE=1 for runs. Needed on machines where "
+                             "direct GPU-to-GPU copies over PCIe hang (e.g. RunPod 4x A40). "
+                             "Leave off on NVLink machines (H200): it slows them down.")
     parser.add_argument("--fake", action="store_true",
                         help="Use a fake model instead of WorldKV (no GPU needed).")
     parser.add_argument("--dry-run", action="store_true",
@@ -306,6 +338,7 @@ def main():
     out_dir = os.path.abspath(args.out)
 
     entries = load_benchmark(args.benchmark)
+    check_video_lengths(entries, methods)
     print(f"{len(entries)} scene-trajectory pairs x {len(methods)} methods "
           f"= {len(entries) * len(methods)} runs")
     generate_all(entries, methods, out_dir, args)
