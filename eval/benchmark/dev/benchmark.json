@@ -1,0 +1,13 @@
+{
+  "name": "dev",
+  "images_dir": "images",
+  "prompts": "prompts.json",
+  "traj_dir": "traj",
+  "pairs": [
+    {"scene": "00", "trajectory": "R_L_R_L_R_L90_360"},
+    {"scene": "15", "trajectory": "R_L_R_L_R_L90_360"},
+    {"scene": "13", "trajectory": "WSRLRL90_245"},
+    {"scene": "uni01", "trajectory": "L_R_W_S_L_R90_318"},
+    {"scene": "uni03", "trajectory": "L_R_W_S_L_R90_318"}
+  ]
+}
