@@ -32,6 +32,7 @@ import torch
 
 from eval import pairing
 from eval.metrics import PairMetrics, SetMetrics, default_device, evaluate_video, read_video, summarize
+from eval.telemetry import ENV_VAR
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -84,6 +85,10 @@ def run_name(entry):
 
 def video_path(out_dir, method, entry):
     return os.path.join(out_dir, "videos", method, run_name(entry) + ".mp4")
+
+
+def telemetry_path(out_dir, method, entry):
+    return os.path.join(out_dir, "runs", method, run_name(entry) + ".telemetry.json")
 
 
 def build_command(entry, method, video, ckpt_dir, nproc=4, seed=42,
@@ -148,8 +153,10 @@ def generate_all(entries, methods, out_dir, args):
                 returncode = 0
             else:
                 log_path = os.path.join(out_dir, "runs", method, run_name(entry) + ".log")
+                # Tells eval/telemetry.py (inside generate_fast.py) where to save timing/memory.
+                env = dict(os.environ, **{ENV_VAR: telemetry_path(out_dir, method, entry)})
                 with open(log_path, "w") as log:
-                    returncode = subprocess.call(cmd, cwd=REPO_ROOT, stdout=log,
+                    returncode = subprocess.call(cmd, cwd=REPO_ROOT, env=env, stdout=log,
                                                  stderr=subprocess.STDOUT)
             meta = {
                 "scene": entry["scene"],
@@ -166,6 +173,28 @@ def generate_all(entries, methods, out_dir, args):
             if returncode != 0:
                 print(f"[fail] {method} {run_name(entry)}: exit code {returncode}, "
                       f"see {meta_path.replace('.json', '.log')}")
+
+
+def read_telemetry(path):
+    """FPS and memory columns from a run's telemetry file (None if missing)."""
+    row = {"fps_last_chunk": None, "fps_mean": None, "peak_gpu_mem_gb": None,
+           "peak_gpu_mem_reserved_gb": None, "peak_cpu_rss_gb": None}
+    if not os.path.exists(path):
+        return row
+    with open(path) as f:
+        t = json.load(f)
+
+    def peak(values):
+        values = [v for v in values or [] if v is not None]
+        return max(values) if values else None
+
+    row["fps_last_chunk"] = t.get("fps_last_chunk")
+    row["fps_mean"] = t.get("fps_mean")
+    # Largest of the GPUs, since the run fails if any one GPU runs out.
+    row["peak_gpu_mem_gb"] = peak(t.get("peak_gpu_mem_allocated_gb"))
+    row["peak_gpu_mem_reserved_gb"] = peak(t.get("peak_gpu_mem_reserved_gb"))
+    row["peak_cpu_rss_gb"] = peak(t.get("cpu_rss_gb"))
+    return row
 
 
 def score_all(entries, methods, out_dir, device, use_fid=True):
@@ -197,9 +226,7 @@ def score_all(entries, methods, out_dir, device, use_fid=True):
                 suffix = "" if g == "all" else f"_{g}"
                 for name in ("lpips", "psnr", "ssim"):
                     row[name + suffix] = groups[g][name]
-            # Filled in once generate_fast.py logs timing and memory (Stage 1).
-            row["fps_last_chunk"] = None
-            row["peak_gpu_mem_gb"] = None
+            row.update(read_telemetry(telemetry_path(out_dir, method, entry)))
             results.append(row)
             ok_rows.append(row)
 
@@ -208,11 +235,16 @@ def score_all(entries, methods, out_dir, device, use_fid=True):
             with open(detail, "w") as f:
                 json.dump({"summary": groups, "pairs": pair_rows}, f, indent=1)
 
-        # Paired metrics: mean over videos, so every scene counts equally.
+        # Paired metrics and FPS: mean over videos, so every scene counts equally.
         srow = {"method": method, "n_videos": len(ok_rows)}
-        for key in ("lpips", "psnr", "ssim", "lpips_long", "psnr_long", "ssim_long"):
+        for key in ("lpips", "psnr", "ssim", "lpips_long", "psnr_long", "ssim_long",
+                    "fps_last_chunk", "fps_mean"):
             vals = [r[key] for r in ok_rows if r.get(key) is not None]
             srow[key] = float(np.mean(vals)) if vals else None
+        # Memory: the largest peak over all videos (what the method needs).
+        for key in ("peak_gpu_mem_gb", "peak_gpu_mem_reserved_gb", "peak_cpu_rss_gb"):
+            vals = [r[key] for r in ok_rows if r.get(key) is not None]
+            srow[key] = float(np.max(vals)) if vals else None
         # Set metrics: pooled over all videos of the method.
         for g, sm in set_metrics.items():
             suffix = "" if g == "all" else f"_{g}"
@@ -237,13 +269,14 @@ def print_summary(summary):
     def fmt(v, spec):
         return format(v, spec) if v is not None else format("-", ">" + spec.split(".")[0])
     print(f"\n{'method':<10} {'videos':>6} {'LPIPS':>7} {'PSNR':>7} {'SSIM':>6} {'FID':>8}"
-          f" | {'LPIPS*':>7} {'PSNR*':>7} {'SSIM*':>6}")
+          f" | {'LPIPS*':>7} {'PSNR*':>7} {'SSIM*':>6} | {'FPS':>6} {'GPU GB':>7}")
     for s in summary:
         print(f"{s['method']:<10} {s['n_videos']:>6} {fmt(s['lpips'], '7.3f')} "
               f"{fmt(s['psnr'], '7.3f')} {fmt(s['ssim'], '6.3f')} {fmt(s.get('fid'), '8.2f')}"
               f" | {fmt(s['lpips_long'], '7.3f')} {fmt(s['psnr_long'], '7.3f')} "
-              f"{fmt(s['ssim_long'], '6.3f')}")
-    print("(* = long-gap pairs only)")
+              f"{fmt(s['ssim_long'], '6.3f')} | {fmt(s['fps_last_chunk'], '6.2f')} "
+              f"{fmt(s['peak_gpu_mem_gb'], '7.1f')}")
+    print("(* = long-gap pairs only; FPS = last chunk; GPU GB = peak allocated, largest GPU)")
 
 
 def main():

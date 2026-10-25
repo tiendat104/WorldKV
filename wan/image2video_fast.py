@@ -15,6 +15,8 @@ import torch.distributed as dist
 import torchvision.transforms.functional as TF
 from tqdm import tqdm
 
+from eval.telemetry import ChunkTelemetry
+
 from .distributed.fsdp import shard_model
 from .distributed.sequence_parallel import sp_attn_forward_causal, sp_dit_forward_causal
 from .distributed.util import get_world_size
@@ -490,7 +492,9 @@ class WanI2VFast:
             c2ws_plucker_emb_chunk = c2ws_plucker_emb.split(chunk_size, dim=2)
             num_inference_chunk = len(latents_chunk)
             pred_latent_chunks = []
+            telemetry = ChunkTelemetry.from_env()
             for chunk_id in tqdm(range(num_inference_chunk)):
+                telemetry.start_chunk()
                 current_latent = latents_chunk[chunk_id]
                 current_condition = condition_chunk[chunk_id]
                 current_c2ws_plucker_emb = c2ws_plucker_emb_chunk[chunk_id]
@@ -678,7 +682,9 @@ class WanI2VFast:
                         _mode = "pooled" if kv_compression_pooled else "per-frame"
                     #     print(f"[Debug] store-time compression on ({_mode}): {chunk_tokens} -> {stored_tokens} tokens/chunk/layer", flush=True)
                     # print(f"[Debug] After clean pass chunk {chunk_id}: bank len={len(kv_bank_k[0])} device={bank_device}", flush=True)
+                telemetry.end_chunk(chunk_size)
 
+            telemetry.save()
             pred_latent_chunks = torch.cat(pred_latent_chunks, dim=1)
 
             if offload_model:

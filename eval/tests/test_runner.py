@@ -99,8 +99,22 @@ def test_fake_run_end_to_end(tmp_path):
     runner.generate_all(entries, methods, out, args)  # second call skips finished videos
     assert os.path.getmtime(video) == mtime
 
+    # Stand-in telemetry for one method, as generate_fast.py would write it.
+    with open(runner.telemetry_path(out, "gpu_only", entries[0]), "w") as f:
+        json.dump({"fps_last_chunk": 4.8, "fps_mean": 5.0,
+                   "peak_gpu_mem_allocated_gb": [50.0, 52.5, 51.0, 50.5],
+                   "peak_gpu_mem_reserved_gb": [55.0, 56.0, 55.5, 55.0],
+                   "cpu_rss_gb": [10.0, 12.0]}, f)
+
     results, summary = runner.score_all(entries, methods, out, torch.device("cpu"),
                                         use_fid=False)
     assert [r["method"] for r in results] == methods
     assert all(r["status"] == "ok" and r["n_pairs"] > 0 for r in results)
     assert [s["n_videos"] for s in summary] == [1, 1]
+
+    sliding, gpu_only = results
+    assert sliding["fps_last_chunk"] is None  # fake runs have no telemetry
+    assert gpu_only["fps_last_chunk"] == 4.8
+    assert gpu_only["peak_gpu_mem_gb"] == 52.5  # the largest of the 4 GPUs
+    assert gpu_only["peak_cpu_rss_gb"] == 12.0
+    assert summary[1]["fps_last_chunk"] == 4.8

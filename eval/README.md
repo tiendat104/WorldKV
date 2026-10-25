@@ -34,6 +34,7 @@ Code lives in this folder so that changes to WorldKV's own files stay small
 | `pairing.py` | Finds (first visit, revisit) frame pairs from a trajectory's poses |
 | `metrics.py` | PSNR, SSIM, LPIPS per pair; FID/KID over sets of frames |
 | `runner.py` | Generates one video per (scene, trajectory) pair and method, then scores them all |
+| `telemetry.py` | Per-chunk timing (FPS) and GPU/CPU memory, called from WorldKV's generation loop |
 | `benchmark/dev/` | Dev test set: 5 scenes, 3 trajectories, `benchmark.json` |
 | `tests/` | Tests (`python -m pytest eval/tests`) |
 
@@ -57,6 +58,26 @@ main settings: 6 retrieved chunks, each compressed to 1.5 frames
 (`--retrieval_frames 18 --kv_compression_keep_ratio 0.25`). Note that the
 repo's own example uses `--kv_compression_keep_ratio 0.5` (2.0 frames), which
 is the "3 -> 2.0" row of the paper's Table 2, not Table 1.
+
+## Timing and memory
+
+`wan/image2video_fast.py` has five added lines that call `eval/telemetry.py`
+(one import and four calls around the chunk loop). When the runner launches a
+run, it sets `WORLDKV_TELEMETRY` to `<out>/runs/<method>/<run>.telemetry.json`,
+and the run writes there:
+
+- the time of every chunk (after waiting for the GPU to finish), and FPS per
+  chunk = video frames / time. A chunk is 3 latent frames = 12 video frames
+  (9 for the first chunk). Model loading and VAE decoding are not counted.
+- peak GPU memory of every GPU (allocated and reserved), and memory per chunk;
+- CPU memory (RSS) per chunk.
+
+Without the environment variable, nothing is recorded.
+
+In the tables, `fps_last_chunk` matches the paper's FPS, and
+`peak_gpu_mem_gb` is the largest peak among the GPUs.
+
+## Restarting
 
 Videos that already exist are skipped, so a stopped run can be restarted.
 Results go to `<out>/results.csv` (one row per run) and `<out>/summary.csv`
