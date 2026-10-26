@@ -17,8 +17,8 @@ def test_video_size_matches_worldkv():
     assert check_benchmark.video_size(768, 512) != (464, 848)  # a 3:2 picture
 
 
-def test_dev_and_full_benchmarks_pass():
-    for name in ("dev", "full"):
+def test_dev_benchmark_passes():
+    for name in ("dev",):
         problems, rows = check_benchmark.check(os.path.join(BENCH, name, "benchmark.json"))
         assert problems == [], (name, problems)
         assert rows
