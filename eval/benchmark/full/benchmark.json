@@ -1,0 +1,104 @@
+{
+  "name": "full",
+  "images_dir": "images",
+  "prompts": "prompts.json",
+  "traj_dir": "traj",
+  "pairs": [
+    {
+      "scene": "city_ai_1",
+      "trajectory": "R_L_R_L_R_L90_360"
+    },
+    {
+      "scene": "city_ai_2",
+      "trajectory": "L_R_L_R_L_R90_360"
+    },
+    {
+      "scene": "city_game_1",
+      "trajectory": "L_R_W_S_L_R90_318"
+    },
+    {
+      "scene": "city_game_2",
+      "trajectory": "R_L_W_S_R_L90_318"
+    },
+    {
+      "scene": "city_real_1",
+      "trajectory": "WSRLRL90_245"
+    },
+    {
+      "scene": "city_real_2",
+      "trajectory": "R_L_R_L120_300"
+    },
+    {
+      "scene": "indoor_ai_1",
+      "trajectory": "D_A_R_L_D_A90_280"
+    },
+    {
+      "scene": "indoor_ai_2",
+      "trajectory": "R_L_R180_320"
+    },
+    {
+      "scene": "indoor_game_1",
+      "trajectory": "R_L_R_L_R_L90_360"
+    },
+    {
+      "scene": "indoor_game_2",
+      "trajectory": "L_R_L_R_L_R90_360"
+    },
+    {
+      "scene": "indoor_real_1",
+      "trajectory": "L_R_W_S_L_R90_318"
+    },
+    {
+      "scene": "indoor_real_2",
+      "trajectory": "R_L_W_S_R_L90_318"
+    },
+    {
+      "scene": "nature_ai_1",
+      "trajectory": "WSRLRL90_245"
+    },
+    {
+      "scene": "nature_ai_2",
+      "trajectory": "R_L_R_L120_300"
+    },
+    {
+      "scene": "nature_game_1",
+      "trajectory": "D_A_R_L_D_A90_280"
+    },
+    {
+      "scene": "nature_game_2",
+      "trajectory": "R_L_R180_320"
+    },
+    {
+      "scene": "nature_real_1",
+      "trajectory": "R_L_R_L_R_L90_360"
+    },
+    {
+      "scene": "nature_real_2",
+      "trajectory": "L_R_L_R_L_R90_360"
+    },
+    {
+      "scene": "outdoor_ai_1",
+      "trajectory": "L_R_W_S_L_R90_318"
+    },
+    {
+      "scene": "outdoor_ai_2",
+      "trajectory": "R_L_W_S_R_L90_318"
+    },
+    {
+      "scene": "outdoor_game_1",
+      "trajectory": "WSRLRL90_245"
+    },
+    {
+      "scene": "outdoor_game_2",
+      "trajectory": "R_L_R_L120_300"
+    },
+    {
+      "scene": "outdoor_real_1",
+      "trajectory": "D_A_R_L_D_A90_280"
+    },
+    {
+      "scene": "outdoor_real_2",
+      "trajectory": "R_L_R180_320"
+    }
+  ]
+}

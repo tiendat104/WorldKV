@@ -36,7 +36,11 @@ Code lives in this folder so that changes to WorldKV's own files stay small
 | `runner.py` | Generates one video per (scene, trajectory) pair and method, then scores them all |
 | `worker.py` | Loads the model once and generates a list of videos (started by `runner.py`) |
 | `telemetry.py` | Per-chunk timing (FPS) and GPU/CPU memory, called from WorldKV's generation loop |
+| `prepare_images.py` | Crops raw benchmark pictures to 848 x 464 and names them with scene IDs |
+| `check_benchmark.py` | Checks a benchmark (pictures, descriptions, video lengths, long-gap revisits) before GPU runs |
+| `benchmark/full/` | Full benchmark (first batch): 24 scenes, 8 trajectory types; see its README |
 | `benchmark/dev/` | Dev test set: 5 scenes, 3 trajectories, `benchmark.json` |
+| `benchmark/smoke/` | One scene, one 130-frame trajectory, for quick GPU checks |
 | `tests/` | Tests (`python -m pytest eval/tests`) |
 
 ## Running a benchmark
