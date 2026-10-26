@@ -5,3 +5,9 @@ __pycache__/
 # Evaluation harness outputs
 eval/outputs/
 .pytest_cache/
+
+# The WorldKV authors' demo videos used to build the benchmark (389 MB).
+# Download from the authors' repo cvlab-kaist/WorldKV at commit 315be40 (paths in eval/authors_videos.py).
+eval/benchmark/videos/
+# Raw first frames of those videos (re-extract with frame 0 of each video).
+eval/benchmark/images/
