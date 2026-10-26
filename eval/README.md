@@ -41,6 +41,23 @@ Code lives in this folder so that changes to WorldKV's own files stay small
 | `benchmark/full/` | Full benchmark (first batch): 24 scenes, 8 trajectory types; see its README |
 | `benchmark/dev/` | Dev test set: 5 scenes, 3 trajectories, `benchmark.json` |
 | `benchmark/smoke/` | One scene, one 130-frame trajectory, for quick GPU checks |
+| `benchmark/rehearsal/` | Scene 00 with `R_L_R_L_R_L90_360` (the authors' own scene and trajectory), for Stage 2 |
+| `setup_pod.sh` | Prepares a fresh RunPod pod in one command: code, environment, `flash_attn`, model files, checks |
+| `nccl_check.py` | Checks that the GPUs can talk to each other (tells you whether `--no-p2p` is needed) |
+
+## Setting up a new pod
+
+On a RunPod pod (PyTorch 2.8.0 template) with a network volume at `/workspace`:
+
+```bash
+curl -sL https://raw.githubusercontent.com/tiendat104/WorldKV/eval-harness/eval/setup_pod.sh | bash
+source /workspace/venv/bin/activate
+```
+
+It clones the code, builds the environment, installs `flash_attn`, downloads
+only the model parts LingBot-World-Fast needs (~81 GB), and checks the GPUs,
+the tests and GPU-to-GPU communication. It ends by saying whether the runner
+needs `--no-p2p` on this machine. Steps already done are skipped.
 | `tests/` | Tests (`python -m pytest eval/tests`) |
 
 ## Running a benchmark
