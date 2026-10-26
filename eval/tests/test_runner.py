@@ -96,6 +96,18 @@ def test_worker_calls_generate_like_generate_fast():
     assert worker == reference
 
 
+def test_worker_env(monkeypatch):
+    monkeypatch.delenv("PYTORCH_CUDA_ALLOC_CONF", raising=False)
+    monkeypatch.delenv("NCCL_P2P_DISABLE", raising=False)
+    env = runner.worker_env(argparse.Namespace(no_p2p=False))
+    assert env["PYTORCH_CUDA_ALLOC_CONF"] == "expandable_segments:True"
+    assert "NCCL_P2P_DISABLE" not in env
+    assert runner.worker_env(argparse.Namespace(no_p2p=True))["NCCL_P2P_DISABLE"] == "1"
+    # A value set by the user is kept.
+    monkeypatch.setenv("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:512")
+    assert runner.worker_env(argparse.Namespace(no_p2p=False))["PYTORCH_CUDA_ALLOC_CONF"] == "max_split_size_mb:512"
+
+
 def test_worker_restarted_after_a_crash(tmp_path):
     entries = runner.load_benchmark(DEV_BENCHMARK)[:3]
     out = str(tmp_path / "out")

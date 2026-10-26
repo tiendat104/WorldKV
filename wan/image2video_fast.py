@@ -686,6 +686,12 @@ class WanI2VFast:
 
             telemetry.save()
             pred_latent_chunks = torch.cat(pred_latent_chunks, dim=1)
+            # Free the generation caches (KV cache, retrieval bank) before decoding:
+            # decoding only needs pred_latent_chunks, and on 46 GB GPUs it ran out of
+            # memory while they were still held.
+            self_kv_cache = cross_kv_cache = kv_bank_k = kv_bank_v = None
+            retrieval_kv = kwargs = None
+            torch.cuda.empty_cache()
 
             if offload_model:
                 self.model.cpu()

@@ -191,22 +191,38 @@ def make_job(entry, method, out_dir, args):
             "fake": False,
             "seed": args.seed,
             "nccl_p2p_disabled": bool(args.no_p2p),
+            "pytorch_cuda_alloc_conf": os.environ.get("PYTORCH_CUDA_ALLOC_CONF", ALLOC_CONF),
             "command": build_command(entry, method, video, args.ckpt_dir, args.nproc, args.seed),
         },
     }
 
 
+# Lets PyTorch grow its GPU memory blocks instead of leaving unusable gaps
+# between them. It changes only how memory is organized, not what is
+# computed, so videos are the same; without it Full KV ran out of memory on
+# 46 GB A40s with 1.4 GB stuck in such gaps.
+ALLOC_CONF = "expandable_segments:True"
+
+
+def worker_env(args):
+    """Environment for the worker: GPU memory setting, and NCCL P2P if disabled."""
+    env = dict(os.environ)
+    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", ALLOC_CONF)
+    if args.no_p2p:
+        env["NCCL_P2P_DISABLE"] = "1"
+    return env
+
+
 def launch_worker(jobs_file, log_path, args):
     """Run eval/worker.py on the jobs file; copy its output to the log, echo progress."""
     cmd = launcher(args.nproc) + ["-m", "eval.worker", jobs_file]
-    env = dict(os.environ)
-    if args.no_p2p:
-        env["NCCL_P2P_DISABLE"] = "1"
+    env = worker_env(args)
     with open(log_path, "w") as log:
         proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True)
         for line in proc.stdout:
             log.write(line)
+            log.flush()  # keep the log current, so progress can be watched live
             if "[job]" in line or "Model loaded once" in line:
                 print("   " + line.strip().split("INFO: ")[-1], flush=True)
         return proc.wait()
