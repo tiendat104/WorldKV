@@ -9,7 +9,7 @@ For every (scene, trajectory) pair it checks that:
 It then prints a summary and exits with an error if anything failed.
 
 Usage:
-  python -m eval.check_benchmark eval/benchmark/full/benchmark.json
+  python -m eval.check_benchmark eval/benchmark/<name>/benchmark.json
 """
 
 import argparse

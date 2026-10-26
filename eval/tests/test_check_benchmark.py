@@ -6,7 +6,7 @@ from PIL import Image
 
 from eval import check_benchmark, runner
 
-BENCH = os.path.join(runner.REPO_ROOT, "eval", "benchmark")
+BENCH = os.path.join(runner.REPO_ROOT, "eval", "tests", "fixtures")
 
 
 def test_video_size_matches_worldkv():

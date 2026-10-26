@@ -9,10 +9,10 @@ Phase 2 scores all videos and writes, in the output folder:
   summary.csv  one row per method, like Table 1 of the paper
 
 Usage on a GPU machine:
-  python -m eval.runner --benchmark eval/benchmark/dev/benchmark.json \
+  python -m eval.runner --benchmark eval/tests/fixtures/dev/benchmark.json \
       --out eval/outputs/dev --ckpt-dir ./lingbot-world-base-cam --nproc 4
 Usage on a laptop (no GPU):
-  python -m eval.runner --benchmark eval/benchmark/dev/benchmark.json \
+  python -m eval.runner --benchmark eval/tests/fixtures/dev/benchmark.json \
       --out eval/outputs/dev_fake --fake --no-fid
 """
 

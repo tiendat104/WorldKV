@@ -41,8 +41,8 @@ or back (24 frames) and `_` is a 16-frame pause. `R_L_R_L_R_L90_360` is a copy
 of the repo's `traj/` file; the other two were made with:
 
 ```bash
-python generate_traj.py --frames 318 --trajectory L_R_W_S_L_R90 --noop-frames 16 --output-dir eval/benchmark/dev/traj
-python generate_traj.py --frames 245 --trajectory WSRLRL90 --output-dir eval/benchmark/dev/traj
+python generate_traj.py --frames 318 --trajectory L_R_W_S_L_R90 --noop-frames 16 --output-dir eval/tests/fixtures/dev/traj
+python generate_traj.py --frames 245 --trajectory WSRLRL90 --output-dir eval/tests/fixtures/dev/traj
 ```
 
 With these settings, regenerating `R_L_R_L_R_L90_360` reproduces the repo's

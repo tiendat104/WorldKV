@@ -21,7 +21,7 @@ _kv_modes = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_kv_modes)
 validate_kv_mode_flags = _kv_modes.validate_kv_mode_flags
 
-DEV_BENCHMARK = os.path.join(runner.REPO_ROOT, "eval", "benchmark", "dev", "benchmark.json")
+DEV_BENCHMARK = os.path.join(runner.REPO_ROOT, "eval", "tests", "fixtures", "dev", "benchmark.json")
 
 
 def flag_value(cmd, flag):
@@ -74,7 +74,7 @@ def test_short_videos_rejected_for_worldkv(tmp_path):
     runner.check_video_lengths(entries, ["sliding", "full_kv"])  # no retrieval: fine
     # The dev and smoke benchmarks are long enough.
     runner.check_video_lengths(runner.load_benchmark(DEV_BENCHMARK), ["gpu_only"])
-    smoke = os.path.join(runner.REPO_ROOT, "eval", "benchmark", "smoke", "benchmark.json")
+    smoke = os.path.join(runner.REPO_ROOT, "eval", "tests", "fixtures", "smoke", "benchmark.json")
     runner.check_video_lengths(runner.load_benchmark(smoke), ["gpu_only"])
 
 

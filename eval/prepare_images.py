@@ -15,7 +15,7 @@ every scene makes 464 x 848 videos), then resized. --zoom FILE=FACTOR crops
 tighter around the center, e.g. to cut off a logo in a corner.
 
 Usage:
-  python -m eval.prepare_images ../benchmark_raw --out eval/benchmark/full \
+  python -m eval.prepare_images ../benchmark_raw --out eval/benchmark/<name> \
       --zoom indoor_game/some-picture.jpg=1.1
 """
 
@@ -127,7 +127,7 @@ def contact_sheet(out_dir, scenes, cols=4, width=424):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("raw_dir", help="Folder with <place>_<kind>/ sub-folders.")
-    parser.add_argument("--out", required=True, help="Output folder (e.g. eval/benchmark/full).")
+    parser.add_argument("--out", required=True, help="Output folder (e.g. eval/benchmark/<name>).")
     parser.add_argument("--zoom", action="append", default=[], metavar="FILE=FACTOR",
                         help="Crop tighter for one picture, e.g. city_game/a.jpg=1.1.")
     args = parser.parse_args()

@@ -1,9 +1,0 @@
-{
-  "name": "rehearsal",
-  "images_dir": "../dev/images",
-  "prompts": "../dev/prompts.json",
-  "traj_dir": "../dev/traj",
-  "pairs": [
-    {"scene": "00", "trajectory": "R_L_R_L_R_L90_360"}
-  ]
-}

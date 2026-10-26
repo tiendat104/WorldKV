@@ -38,9 +38,10 @@ Code lives in this folder so that changes to WorldKV's own files stay small
 | `telemetry.py` | Per-chunk timing (FPS) and GPU/CPU memory, called from WorldKV's generation loop |
 | `prepare_images.py` | Crops raw benchmark pictures to 848 x 464 and names them with scene IDs |
 | `check_benchmark.py` | Checks a benchmark (pictures, descriptions, video lengths, long-gap revisits) before GPU runs |
-| `benchmark/dev/` | Dev test set: 5 scenes, 3 trajectories, `benchmark.json` |
-| `benchmark/smoke/` | One scene, one 130-frame trajectory, for quick GPU checks |
-| `benchmark/rehearsal/` | Scene 00 with `R_L_R_L_R_L90_360` (the authors' own scene and trajectory), for Stage 2 |
+| `benchmark/` | The benchmark used for results (one folder per benchmark) |
+| `authors_videos.py` | Scores the WorldKV authors' released demo videos (checks our metrics against a known answer) |
+| `tests/fixtures/dev/` | Small test set for the tests: 5 scenes, 3 trajectories (not a benchmark) |
+| `tests/fixtures/smoke/` | One scene with a 130-frame trajectory, for a quick check of a new GPU machine (about 12 min per method) |
 | `setup_pod.sh` | Prepares a fresh RunPod pod in one command: code, environment, `flash_attn`, model files, checks |
 | `nccl_check.py` | Checks that the GPUs can talk to each other (tells you whether `--no-p2p` is needed) |
 
@@ -63,13 +64,13 @@ needs `--no-p2p` on this machine. Steps already done are skipped.
 
 ```bash
 # Laptop: fake model, checks the pipeline end to end
-python -m eval.runner --benchmark eval/benchmark/dev/benchmark.json \
+python -m eval.runner --benchmark eval/tests/fixtures/dev/benchmark.json \
     --out eval/outputs/dev_fake --fake --no-fid
 
 # GPU machine: print the commands first, then run
-python -m eval.runner --benchmark eval/benchmark/dev/benchmark.json \
+python -m eval.runner --benchmark eval/tests/fixtures/dev/benchmark.json \
     --out eval/outputs/dev --ckpt-dir ./lingbot-world-base-cam --nproc 4 --dry-run
-python -m eval.runner --benchmark eval/benchmark/dev/benchmark.json \
+python -m eval.runner --benchmark eval/tests/fixtures/dev/benchmark.json \
     --out eval/outputs/dev --ckpt-dir ./lingbot-world-base-cam --nproc 4
 ```
 
