@@ -99,6 +99,38 @@
     {
       "scene": "outdoor_real_2",
       "trajectory": "R_L_R180_320"
+    },
+    {
+      "scene": "authors_00",
+      "trajectory": "R_L_R_L_R_L90_360"
+    },
+    {
+      "scene": "authors_15",
+      "trajectory": "R_L_R_L_R_L90_360"
+    },
+    {
+      "scene": "authors_07",
+      "trajectory": "L_R_W_S_L_R90_318"
+    },
+    {
+      "scene": "authors_uni01",
+      "trajectory": "L_R_W_S_L_R90_318"
+    },
+    {
+      "scene": "authors_uni03",
+      "trajectory": "L_R_W_S_L_R90_318"
+    },
+    {
+      "scene": "authors_13",
+      "trajectory": "L_R_L_R_L_R90_360"
+    },
+    {
+      "scene": "authors_08",
+      "trajectory": "WSRLRL90_245"
+    },
+    {
+      "scene": "authors_14",
+      "trajectory": "R_L_W_S_R_L90_318"
     }
   ]
 }

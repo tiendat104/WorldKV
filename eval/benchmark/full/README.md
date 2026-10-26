@@ -1,6 +1,7 @@
 # Full benchmark (first batch)
 
-24 scene-trajectory pairs for the final runs, following the paper's recipe
+32 scene-trajectory pairs: 8 of the WorldKV authors' own scenes (see
+below) and 24 of ours. Ours are built with the paper's recipe
 (Sec. 5.1): 4 kinds of places (indoor, outdoor, city, nature) x 3 sources
 (real photos, game screenshots, AI-generated), 2 scenes each. Each scene is
 paired with one camera trajectory that returns to earlier views after a long
@@ -22,6 +23,40 @@ python -m eval.check_benchmark eval/benchmark/full/benchmark.json
 | `traj/` | The 4 camera trajectories |
 | `scenes.json` | Per scene: kind, original file, crop, source |
 | `contact_sheet.jpg` | All 24 pictures, to check by eye |
+
+## The authors' scenes
+
+8 scenes from the WorldKV authors, named `authors_<id>` and marked
+`"group": "authors"` in `scenes.json` (ours are `"group": "ours"`), so results
+can be reported for both groups. They are the authors' demo scenes without an
+on-screen key overlay: 00, 07, 08, 13, 14, 15, uni01, uni03. `authors_00.png`
+is the repo's own example input with its original description; the others
+are frame 0 of the authors' demo videos (compressed, so a bit soft), cropped
+to 848 x 464, with descriptions written by us.
+
+Where the authors' video names give a trajectory, it is used:
+
+| Scene | Trajectory | From |
+|---|---|---|
+| authors_00, authors_15 | `R_L_R_L_R_L90_360` | the authors' video names |
+| authors_07, authors_uni01, authors_uni03 | `L_R_W_S_L_R90_318` | the authors' video names |
+| authors_13 | `L_R_L_R_L_R90_360` | their `L_R_L_R_L_R_385` pattern; the turn angle is not in the name, 90 deg assumed |
+| authors_08 | `WSRLRL90_245` | unknown; another of the authors' patterns |
+| authors_14 | `R_L_W_S_R_L90_318` | unknown; another of the authors' patterns |
+
+## First pass (`pass1.json`)
+
+12 pairs for the first round of runs: the 8 authors' scenes plus 4 of ours,
+one per kind of place and per source, all with trajectories of at most 309
+frames (`indoor_real_1`, `nature_ai_1`, `city_game_1`, `outdoor_real_1`).
+
+Full KV does not fit on 46 GB GPUs (A40) for the 357-frame trajectories
+(authors_00, authors_15, authors_13 here); run those on more or larger GPUs.
+
+```bash
+python -m eval.check_benchmark eval/benchmark/full/pass1.json
+python -m eval.runner --benchmark eval/benchmark/full/pass1.json --out <out> ...
+```
 
 ## Trajectories
 

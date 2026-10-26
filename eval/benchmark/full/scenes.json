@@ -17,7 +17,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "unknown web source",
-  "note": "AI-generated"
+  "note": "AI-generated",
+  "group": "ours"
  },
  {
   "scene": "city_ai_2",
@@ -37,7 +38,8 @@
   "zoom": 1.0,
   "upscaled": true,
   "source": "likely Freepik (file-name pattern)",
-  "note": "AI-generated"
+  "note": "AI-generated",
+  "group": "ours"
  },
  {
   "scene": "city_game_1",
@@ -57,7 +59,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "Cyberpunk 2077 screenshot, likely Reddit (file-name pattern)",
-  "note": "game screenshot"
+  "note": "game screenshot",
+  "group": "ours"
  },
  {
   "scene": "city_game_2",
@@ -77,7 +80,8 @@
   "zoom": 1.0,
   "upscaled": true,
   "source": "Reddit post \"I recreated an entire scene from the game Cyberpunk 2077 in ...\"",
-  "note": "fan recreation of a game scene"
+  "note": "fan recreation of a game scene",
+  "group": "ours"
  },
  {
   "scene": "city_real_1",
@@ -97,7 +101,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "unknown web source",
-  "note": "photo"
+  "note": "photo",
+  "group": "ours"
  },
  {
   "scene": "city_real_2",
@@ -117,7 +122,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "photo by Paul Katcher (per file name)",
-  "note": "photo"
+  "note": "photo",
+  "group": "ours"
  },
  {
   "scene": "indoor_ai_1",
@@ -137,7 +143,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "web article \"How AI is Reshaping Interior Design\"",
-  "note": "AI-generated"
+  "note": "AI-generated",
+  "group": "ours"
  },
  {
   "scene": "indoor_ai_2",
@@ -157,7 +164,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "Pedram Ki Studio (per file name)",
-  "note": "AI-generated architecture concept"
+  "note": "AI-generated architecture concept",
+  "group": "ours"
  },
  {
   "scene": "indoor_game_1",
@@ -177,7 +185,8 @@
   "zoom": 1.1,
   "upscaled": true,
   "source": "unknown web source (Pinterest-style file name)",
-  "note": "game-style render"
+  "note": "game-style render",
+  "group": "ours"
  },
  {
   "scene": "indoor_game_2",
@@ -197,7 +206,8 @@
   "zoom": 1.1,
   "upscaled": false,
   "source": "artwork by Luther S. Schmidt (per file name)",
-  "note": "game-style render, small logo cropped out"
+  "note": "game-style render, small logo cropped out",
+  "group": "ours"
  },
  {
   "scene": "indoor_real_1",
@@ -217,7 +227,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "unknown web source",
-  "note": "interior photo or render"
+  "note": "interior photo or render",
+  "group": "ours"
  },
  {
   "scene": "indoor_real_2",
@@ -237,7 +248,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "\"Infinity Vision\" 3D interior scene preview (per file name)",
-  "note": "3D render"
+  "note": "3D render",
+  "group": "ours"
  },
  {
   "scene": "nature_ai_1",
@@ -257,7 +269,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "likely Pixabay (file-name pattern)",
-  "note": "AI-generated"
+  "note": "AI-generated",
+  "group": "ours"
  },
  {
   "scene": "nature_ai_2",
@@ -277,7 +290,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "unknown web source",
-  "note": "AI-generated"
+  "note": "AI-generated",
+  "group": "ours"
  },
  {
   "scene": "nature_game_1",
@@ -297,7 +311,8 @@
   "zoom": 1.0,
   "upscaled": true,
   "source": "likely Freepik (file-name pattern)",
-  "note": "game-style illustration"
+  "note": "game-style illustration",
+  "group": "ours"
  },
  {
   "scene": "nature_game_2",
@@ -317,7 +332,8 @@
   "zoom": 1.02,
   "upscaled": false,
   "source": "artwork by Isaiah Jo (per file name)",
-  "note": "game-style illustration"
+  "note": "game-style illustration",
+  "group": "ours"
  },
  {
   "scene": "nature_real_1",
@@ -337,7 +353,8 @@
   "zoom": 1.0,
   "upscaled": true,
   "source": "likely Freepik (file-name pattern)",
-  "note": "photo"
+  "note": "photo",
+  "group": "ours"
  },
  {
   "scene": "nature_real_2",
@@ -357,7 +374,8 @@
   "zoom": 1.0,
   "upscaled": true,
   "source": "YouTube video thumbnail, video unknown",
-  "note": "photo, black bars cropped out"
+  "note": "photo, black bars cropped out",
+  "group": "ours"
  },
  {
   "scene": "outdoor_ai_1",
@@ -377,7 +395,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "unknown web source",
-  "note": "AI-generated"
+  "note": "AI-generated",
+  "group": "ours"
  },
  {
   "scene": "outdoor_ai_2",
@@ -397,7 +416,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "unknown web article on AI front-yard design",
-  "note": "AI-generated"
+  "note": "AI-generated",
+  "group": "ours"
  },
  {
   "scene": "outdoor_game_1",
@@ -417,7 +437,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "Toontown, Acorn Acres (per file name)",
-  "note": "game screenshot"
+  "note": "game screenshot",
+  "group": "ours"
  },
  {
   "scene": "outdoor_game_2",
@@ -437,7 +458,8 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "Garden Life game screenshot (per file name)",
-  "note": "game screenshot"
+  "note": "game screenshot",
+  "group": "ours"
  },
  {
   "scene": "outdoor_real_1",
@@ -457,7 +479,8 @@
   "zoom": 1.0,
   "upscaled": true,
   "source": "likely Vecteezy (file-name pattern)",
-  "note": "photo"
+  "note": "photo",
+  "group": "ours"
  },
  {
   "scene": "outdoor_real_2",
@@ -477,6 +500,87 @@
   "zoom": 1.0,
   "upscaled": false,
   "source": "likely Vecteezy \"free photo\" (file-name pattern)",
-  "note": "photo"
+  "note": "photo",
+  "group": "ours"
+ },
+ {
+  "scene": "authors_00",
+  "group": "authors",
+  "place": "outdoor",
+  "kind": "authors",
+  "original": "examples/new/00.png (repo's example input)",
+  "source": "WorldKV authors (cvlab-kaist/WorldKV, main branch)",
+  "note": "original input picture, unchanged",
+  "authors_trajectory": "R_L_R_L_R_L90_360"
+ },
+ {
+  "scene": "authors_07",
+  "group": "authors",
+  "place": "city",
+  "kind": "authors",
+  "original": "world_videos/1/07_L_R_W_S_L_R90_318_seed4936.mp4, frame 0",
+  "source": "WorldKV authors (cvlab-kaist/WorldKV, main branch)",
+  "note": "frame 0 of the authors' video, cropped",
+  "authors_trajectory": "L_R_W_S_L_R90_318"
+ },
+ {
+  "scene": "authors_08",
+  "group": "authors",
+  "place": "indoor",
+  "kind": "authors",
+  "original": "world_videos/comparisons/08_ours.mp4, frame 0",
+  "source": "WorldKV authors (cvlab-kaist/WorldKV, main branch)",
+  "note": "frame 0 of the authors' video, cropped",
+  "authors_trajectory": null
+ },
+ {
+  "scene": "authors_13",
+  "group": "authors",
+  "place": "city",
+  "kind": "authors",
+  "original": "world_videos/comparisons/new_13_L_R_L_R_L_R_385_ours_cut.mp4, frame 0",
+  "source": "WorldKV authors (cvlab-kaist/WorldKV, main branch)",
+  "note": "frame 0 of the authors' video, cropped",
+  "authors_trajectory": "L_R_L_R_L_R (angle not in name)"
+ },
+ {
+  "scene": "authors_14",
+  "group": "authors",
+  "place": "outdoor",
+  "kind": "authors",
+  "original": "world_videos/comparisons/14_ours_cut.mp4, frame 0",
+  "source": "WorldKV authors (cvlab-kaist/WorldKV, main branch)",
+  "note": "frame 0 of the authors' video, cropped",
+  "authors_trajectory": null
+ },
+ {
+  "scene": "authors_15",
+  "group": "authors",
+  "place": "indoor",
+  "kind": "authors",
+  "original": "world_videos/worldkvfullkv/15_R_L_R_L_R_L90_360_compressed.mp4, frame 0",
+  "source": "WorldKV authors (cvlab-kaist/WorldKV, main branch)",
+  "note": "frame 0 of the authors' video, cropped",
+  "authors_trajectory": "R_L_R_L_R_L90_360"
+ },
+ {
+  "scene": "authors_uni01",
+  "group": "authors",
+  "place": "outdoor",
+  "kind": "authors",
+  "original": "world_videos/dynamic/uni01_L_R_W_S_L_R90_318.mp4, frame 0",
+  "source": "WorldKV authors (cvlab-kaist/WorldKV, main branch)",
+  "note": "frame 0 of the authors' video, cropped",
+  "authors_trajectory": "L_R_W_S_L_R90_318"
+ },
+ {
+  "scene": "authors_uni03",
+  "group": "authors",
+  "place": "city",
+  "kind": "authors",
+  "original": "world_videos/dynamic/uni03_L_R_W_S_L_R90_318_cut.mp4, frame 0",
+  "source": "WorldKV authors (cvlab-kaist/WorldKV, main branch)",
+  "note": "frame 0 of the authors' video, cropped",
+  "authors_trajectory": "L_R_W_S_L_R90_318"
  }
 ]
