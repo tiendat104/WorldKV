@@ -1,0 +1,40 @@
+{
+  "name": "first8",
+  "images_dir": "final_images",
+  "prompts": "prompts.json",
+  "traj_dir": "traj",
+  "pairs": [
+    {
+      "scene": "20_R_L_W_S_R_L90_318",
+      "trajectory": "R_L_W_S_R_L90_318"
+    },
+    {
+      "scene": "21_L_R_W_S_L_R90_318",
+      "trajectory": "L_R_W_S_L_R90_318"
+    },
+    {
+      "scene": "23_L_R_W_S_L_R90_318",
+      "trajectory": "L_R_W_S_L_R90_318"
+    },
+    {
+      "scene": "04_RLWSRL90_245",
+      "trajectory": "RLWSRL90_245"
+    },
+    {
+      "scene": "04_WSRLRL90_245",
+      "trajectory": "WSRLRL90_245"
+    },
+    {
+      "scene": "31_WSRLRL90_245",
+      "trajectory": "WSRLRL90_245"
+    },
+    {
+      "scene": "37_RLWSRL90_245",
+      "trajectory": "RLWSRL90_245"
+    },
+    {
+      "scene": "23_RLWSRL90_245",
+      "trajectory": "RLWSRL90_245"
+    }
+  ]
+}
