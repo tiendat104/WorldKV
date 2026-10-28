@@ -6,15 +6,6 @@ Evaluation harness for the LTWM project (CS854). It measures:
 - **Speed:** FPS per chunk (the paper reports the last chunk).
 - **Memory:** peak GPU memory per GPU, and CPU memory.
 
-The first goal is to reproduce the LingBot-World-Fast rows of WorldKV's Table 1
-(Sliding Window, Full KV, WorldKV). The harness also runs WorldKV with its
-stored chunks in CPU memory (`cpu_only`), which Table 1 does not report.
-
-Status: memory quality has been measured on 12 of the 16 benchmark entries
-(4x A40) and shows Table 1's order. Speed has not been measured on the paper's
-hardware (4x H200); see [Machine notes](#machine-notes) for why A40 FPS is not
-comparable.
-
 ## How it works
 
 ```
@@ -66,10 +57,6 @@ benchmark.json ─► runner.py ─► worker.py (on the GPUs) ─► videos/<me
   per method, over all pairs of all its videos: first visits are the "real"
   set and revisits the "generated" set. On a Mac they run on the CPU (MPS has
   no float64).
-- Our generated videos are scored **without any mask**. The authors' released
-  videos show a W/A/S/D key overlay, so `authors_videos.py` blacks out that
-  corner (bottom-left, 200 x 164 pixels) before scoring them. Masked and
-  unmasked scores are not comparable.
 
 ## Setup
 
@@ -105,23 +92,6 @@ Code lives in this folder so that changes to WorldKV's own files stay small
 | `setup_pod.sh` | Prepares a fresh RunPod pod in one command: code, environment, `flash_attn`, model files, checks |
 | `nccl_check.py` | Checks that the GPUs can talk to each other (tells you whether `--no-p2p` is needed) |
 | `requirements.txt` | Packages the harness needs on top of WorldKV's |
-| `tests/` | Tests (`python -m pytest eval/tests`) |
-| `tests/fixtures/dev/` | Small test set for the tests: 5 scenes, 3 trajectories (not a benchmark) |
-| `tests/fixtures/smoke/` | One scene with a 130-frame trajectory, for a quick check of a new GPU machine (about 12 min per method on 4x A40) |
-
-## Setting up a new pod
-
-On a RunPod pod (PyTorch 2.8.0 template) with a network volume at `/workspace`:
-
-```bash
-curl -sL https://raw.githubusercontent.com/tiendat104/WorldKV/eval-harness/eval/setup_pod.sh | bash
-source /workspace/venv/bin/activate
-```
-
-It clones the code, builds the environment, installs `flash_attn`, downloads
-only the model parts LingBot-World-Fast needs (~81 GB), and checks the GPUs,
-the tests and GPU-to-GPU communication. It ends by saying whether the runner
-needs `--no-p2p` on this machine. Steps already done are skipped.
 
 ## Running a benchmark
 
@@ -145,7 +115,7 @@ Options:
 | `--methods` | Comma-separated subset of the methods below (default: all four) |
 | `--nproc` | GPUs per run (default 4) |
 | `--seed` | Generation seed (default 42) |
-| `--no-p2p` | Turn off direct GPU-to-GPU copies (see [Machine notes](#machine-notes)) |
+| `--no-p2p` | Turn off direct GPU-to-GPU copies (needed where GPUs are linked only by PCIe, e.g. 4x A40; not on NVLink machines) |
 | `--fake` | Fake model, for checking the pipeline without GPUs |
 | `--dry-run` | Print the generation commands without running them |
 | `--no-fid` | Skip FID/KID (faster) |
@@ -177,7 +147,7 @@ Everything goes in the `--out` folder:
 |---|---|
 | `videos/<method>/<run>.mp4` | The generated videos (`<run>` = `<scene>_<trajectory>`) |
 | `runs/<method>/<run>.json` | The run's status, timing, and the equivalent stand-alone `generate_fast.py` command |
-| `runs/<method>/<run>.telemetry.json` | Per-chunk time, FPS and memory (see [Timing and memory](#timing-and-memory)) |
+| `runs/<method>/<run>.telemetry.json` | Per-chunk time, FPS and memory |
 | `runs/jobs_<n>.json`, `runs/worker_<n>.log` | The job list given to each worker, and its output |
 | `metrics/<method>/<run>.json` | The score of every pair, and per-group means |
 | `results.csv` | One row per run: per-group means of LPIPS, PSNR and SSIM (`all`, and `long` as `*_long`), FPS, peak memory |
@@ -203,23 +173,6 @@ parser and passed to the same `generate()` call (a test checks that the two
 calls match). If the worker stops during a video (e.g. out of GPU memory),
 that video is marked `failed` and a new worker runs the rest.
 
-## Timing and memory
-
-When the runner launches a run, it sets `WORLDKV_TELEMETRY` to
-`<out>/runs/<method>/<run>.telemetry.json`, and the run writes there:
-
-- the time of every chunk (after waiting for the GPU to finish), and FPS per
-  chunk = video frames / time. A chunk is 3 latent frames = 12 video frames
-  (9 for the first chunk). Model loading and VAE decoding are not counted;
-  retrieving stored chunks (including any CPU-to-GPU copy) is.
-- peak GPU memory of every GPU (allocated and reserved), and memory per chunk;
-- CPU memory (RSS) per chunk.
-
-Without the environment variable, nothing is recorded.
-
-In the tables, `fps_last_chunk` matches the paper's FPS, and
-`peak_gpu_mem_gb` is the largest peak among the GPUs.
-
 ## Changes to WorldKV's code
 
 Outside this folder, the harness changes only `wan/image2video_fast.py`
@@ -232,25 +185,3 @@ Outside this folder, the harness changes only `wan/image2video_fast.py`
   the video, which needs only the generated latents. Without this, decoding
   ran out of memory on 46 GB GPUs. The videos are pixel-identical with and
   without it.
-
-## Machine notes
-
-- **`--no-p2p`:** on machines where GPUs are linked only by PCIe (e.g. RunPod
-  4x A40), the GPUs can hang when copying to each other directly. Pass
-  `--no-p2p` (sets `NCCL_P2P_DISABLE=1`). Do not use it on NVLink machines
-  (H200).
-- **GPU memory setting:** the runner sets
-  `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` for every run (unless it
-  is already set). Together with freeing memory before decoding, this is what
-  makes the runs fit on 46 GB GPUs.
-- **Full KV on 46 GB GPUs (A40):** it fits 309-frame videos (about 44.5 of
-  46 GB per GPU) but not the 357-frame ones (benchmark entries 00 and 15);
-  those need more or larger GPUs.
-- **FPS on A40 is not comparable with the paper's:** with `--no-p2p`, data
-  between GPUs passes through the CPU, which takes most of each chunk's time
-  and hides the speed differences between methods (Full KV runs at 0.88x the
-  speed of Sliding Window there, vs. 0.47x in the paper on 4x H200). Use the
-  A40 for quality and memory, and GPUs with NVLink for speed.
-- **Minimum video length:** WorldKV needs videos of at least 27 latent frames
-  (about 110 video frames); with shorter ones its window silently loses the
-  recent frames, so the runner refuses them.
