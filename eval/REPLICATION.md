@@ -73,9 +73,9 @@ How the runner works:
 - **Timing and memory are recorded per chunk.** The runner sets
   `WORLDKV_TELEMETRY` for every run, and the hooks in
   `wan/image2video_fast.py` (through [`telemetry.py`](telemetry.py)) record
-  the time of every chunk (after waiting for the GPUs), FPS per chunk, peak
-  GPU memory of every GPU, and CPU memory. Model loading and VAE decoding are
-  not counted.
+  the time of every chunk (with CUDA events on the generation stream), FPS
+  per chunk, peak GPU memory of every GPU, and CPU memory. Model loading and
+  VAE decoding are not counted.
 
 On 4x A40, a video took about 12-15 minutes for 309 frames and 9-11 minutes
 for 237 frames, plus 6-8 minutes to load the model once per worker.
@@ -85,9 +85,10 @@ for 237 frames, plus 6-8 minutes to load the model once per worker.
 After generating, the runner scores every video with the metric code (see
 [`README.md`](README.md)):
 
-- every (first visit, revisit) pair of the video's trajectory is scored with
-  PSNR, SSIM and LPIPS; a video's score is the mean over its pairs, and a
-  method's score the mean over its videos, so every entry counts equally;
+- every (first visit, revisit) pair of the video's trajectory, found on the
+  camera poses generation gave each frame, is scored with PSNR, SSIM and
+  LPIPS; a video's score is the mean over its pairs, and a method's score the
+  mean over its videos, so every entry counts equally;
 - FID and KID are computed once per method over all pairs of all its videos;
 - "long gaps" are the pairs whose first visit has left the attention window
   (more than 18 latent frames earlier): they test long-term memory.
@@ -116,9 +117,9 @@ videos.
 
 | Method | LPIPS ↓ | PSNR ↑ | SSIM ↑ | FID ↓ | LPIPS ↓ (long gaps) |
 |---|---|---|---|---|---|
-| Sliding Window | 0.538 | 12.17 | 0.393 | 92.3 | 0.627 |
-| Full KV | **0.487** | **13.31** | **0.410** | 62.9 | **0.549** |
-| WorldKV | 0.501 | 13.08 | 0.401 | **61.4** | 0.566 |
+| Sliding Window | 0.540 | 12.05 | 0.386 | 96.1 | 0.626 |
+| Full KV | **0.482** | **13.30** | **0.404** | 65.0 | **0.545** |
+| WorldKV | 0.505 | 12.85 | 0.391 | **64.6** | 0.566 |
 | *Paper, Sliding Window (60 scenes)* | *0.581* | *12.18* | *0.375* | *144.0* | |
 | *Paper, Full KV (60 scenes)* | *0.441* | *15.90* | *0.472* | *85.7* | |
 | *Paper, WorldKV (60 scenes)* | *0.455* | *15.66* | *0.463* | *75.6* | |
@@ -132,55 +133,55 @@ all pairs of the 12 entries.
 
 | Entry | LPIPS ↓ | PSNR ↑ | SSIM ↑ | FID ↓ | LPIPS ↓ (long gaps) |
 |---|---|---|---|---|---|
-| `20_R_L_W_S_R_L90_318` | 0.473 | 12.56 | 0.348 | 199.3 | 0.577 |
-| `21_L_R_W_S_L_R90_318` | 0.546 | 11.71 | 0.457 | 124.6 | 0.676 |
-| `23_L_R_W_S_L_R90_318` | 0.498 | 11.87 | 0.319 | 146.8 | 0.593 |
-| `04_RLWSRL90_245` | 0.598 | 11.01 | 0.339 | 119.7 | 0.685 |
-| `04_WSRLRL90_245` | 0.579 | 11.87 | 0.338 | 133.3 | 0.635 |
-| `31_WSRLRL90_245` | 0.553 | 12.25 | 0.374 | 185.5 | 0.609 |
-| `37_RLWSRL90_245` | 0.629 | 9.99 | 0.388 | 134.1 | 0.740 |
-| `23_RLWSRL90_245` | 0.537 | 10.60 | 0.343 | 150.6 | 0.621 |
-| `uni01_L_R_W_S_L_R90_318` | 0.438 | 14.70 | 0.510 | 98.3 | 0.607 |
-| `26_L_R_W_S_L_R90_318` | 0.360 | 14.74 | 0.505 | 100.0 | 0.463 |
-| `41_RLWSRL90_245` | 0.704 | 8.63 | 0.254 | 233.7 | 0.725 |
-| `24_WSRLRL90_245` | 0.539 | 16.12 | 0.537 | 155.7 | 0.596 |
-| **Mean of 12** | **0.538** | **12.17** | **0.393** | **148.5** | **0.627** |
+| `20_R_L_W_S_R_L90_318` | 0.476 | 12.47 | 0.342 | 197.0 | 0.576 |
+| `21_L_R_W_S_L_R90_318` | 0.551 | 11.50 | 0.450 | 131.7 | 0.680 |
+| `23_L_R_W_S_L_R90_318` | 0.514 | 11.47 | 0.306 | 144.5 | 0.598 |
+| `04_RLWSRL90_245` | 0.573 | 11.46 | 0.351 | 118.6 | 0.673 |
+| `04_WSRLRL90_245` | 0.610 | 11.17 | 0.315 | 147.1 | 0.646 |
+| `31_WSRLRL90_245` | 0.563 | 12.11 | 0.364 | 206.7 | 0.578 |
+| `37_RLWSRL90_245` | 0.621 | 10.24 | 0.392 | 134.5 | 0.740 |
+| `23_RLWSRL90_245` | 0.512 | 11.14 | 0.358 | 149.8 | 0.618 |
+| `uni01_L_R_W_S_L_R90_318` | 0.446 | 13.81 | 0.488 | 102.5 | 0.613 |
+| `26_L_R_W_S_L_R90_318` | 0.358 | 14.59 | 0.494 | 102.1 | 0.459 |
+| `41_RLWSRL90_245` | 0.669 | 9.29 | 0.275 | 217.5 | 0.720 |
+| `24_WSRLRL90_245` | 0.584 | 15.29 | 0.497 | 183.1 | 0.610 |
+| **Mean of 12** | **0.540** | **12.05** | **0.386** | **152.9** | **0.626** |
 
 **Full KV**
 
 | Entry | LPIPS ↓ | PSNR ↑ | SSIM ↑ | FID ↓ | LPIPS ↓ (long gaps) |
 |---|---|---|---|---|---|
-| `20_R_L_W_S_R_L90_318` | 0.444 | 12.58 | 0.314 | 165.5 | 0.523 |
-| `21_L_R_W_S_L_R90_318` | 0.427 | 14.18 | 0.521 | 55.7 | 0.538 |
-| `23_L_R_W_S_L_R90_318` | 0.418 | 14.52 | 0.416 | 100.4 | 0.523 |
-| `04_RLWSRL90_245` | 0.544 | 12.63 | 0.348 | 125.8 | 0.594 |
-| `04_WSRLRL90_245` | 0.535 | 12.60 | 0.335 | 105.1 | 0.569 |
-| `31_WSRLRL90_245` | 0.520 | 12.28 | 0.373 | 117.9 | 0.544 |
-| `37_RLWSRL90_245` | 0.577 | 11.05 | 0.404 | 113.0 | 0.651 |
-| `23_RLWSRL90_245` | 0.500 | 11.11 | 0.323 | 102.1 | 0.547 |
-| `uni01_L_R_W_S_L_R90_318` | 0.361 | 16.14 | 0.529 | 35.5 | 0.451 |
-| `26_L_R_W_S_L_R90_318` | 0.330 | 16.77 | 0.515 | 42.6 | 0.409 |
-| `41_RLWSRL90_245` | 0.686 | 8.43 | 0.248 | 211.7 | 0.689 |
-| `24_WSRLRL90_245` | 0.497 | 17.41 | 0.591 | 95.2 | 0.546 |
-| **Mean of 12** | **0.487** | **13.31** | **0.410** | **105.9** | **0.549** |
+| `20_R_L_W_S_R_L90_318` | 0.453 | 12.53 | 0.300 | 164.4 | 0.528 |
+| `21_L_R_W_S_L_R90_318` | 0.447 | 13.77 | 0.495 | 57.3 | 0.559 |
+| `23_L_R_W_S_L_R90_318` | 0.430 | 13.87 | 0.393 | 103.3 | 0.523 |
+| `04_RLWSRL90_245` | 0.514 | 13.28 | 0.366 | 129.9 | 0.567 |
+| `04_WSRLRL90_245` | 0.566 | 11.92 | 0.310 | 114.5 | 0.590 |
+| `31_WSRLRL90_245` | 0.468 | 13.72 | 0.400 | 121.1 | 0.476 |
+| `37_RLWSRL90_245` | 0.565 | 11.16 | 0.413 | 112.3 | 0.643 |
+| `23_RLWSRL90_245` | 0.470 | 11.71 | 0.342 | 102.0 | 0.551 |
+| `uni01_L_R_W_S_L_R90_318` | 0.357 | 15.15 | 0.506 | 39.5 | 0.455 |
+| `26_L_R_W_S_L_R90_318` | 0.329 | 16.58 | 0.497 | 45.8 | 0.407 |
+| `41_RLWSRL90_245` | 0.652 | 9.08 | 0.270 | 198.0 | 0.678 |
+| `24_WSRLRL90_245` | 0.535 | 16.83 | 0.556 | 107.2 | 0.559 |
+| **Mean of 12** | **0.482** | **13.30** | **0.404** | **107.9** | **0.545** |
 
 **WorldKV**
 
 | Entry | LPIPS ↓ | PSNR ↑ | SSIM ↑ | FID ↓ | LPIPS ↓ (long gaps) |
 |---|---|---|---|---|---|
-| `20_R_L_W_S_R_L90_318` | 0.448 | 12.67 | 0.313 | 152.5 | 0.522 |
-| `21_L_R_W_S_L_R90_318` | 0.454 | 14.16 | 0.518 | 57.8 | 0.575 |
-| `23_L_R_W_S_L_R90_318` | 0.446 | 13.39 | 0.381 | 97.1 | 0.541 |
-| `04_RLWSRL90_245` | 0.540 | 12.64 | 0.348 | 110.7 | 0.583 |
-| `04_WSRLRL90_245` | 0.574 | 12.02 | 0.329 | 115.4 | 0.614 |
-| `31_WSRLRL90_245` | 0.575 | 12.13 | 0.336 | 143.0 | 0.643 |
-| `37_RLWSRL90_245` | 0.587 | 10.37 | 0.395 | 100.1 | 0.659 |
-| `23_RLWSRL90_245` | 0.499 | 11.11 | 0.314 | 105.8 | 0.539 |
-| `uni01_L_R_W_S_L_R90_318` | 0.368 | 16.21 | 0.526 | 35.2 | 0.463 |
-| `26_L_R_W_S_L_R90_318` | 0.337 | 16.89 | 0.512 | 36.6 | 0.405 |
-| `41_RLWSRL90_245` | 0.681 | 8.59 | 0.269 | 198.7 | 0.683 |
-| `24_WSRLRL90_245` | 0.507 | 16.71 | 0.575 | 107.6 | 0.565 |
-| **Mean of 12** | **0.501** | **13.08** | **0.401** | **105.0** | **0.566** |
+| `20_R_L_W_S_R_L90_318` | 0.454 | 12.59 | 0.298 | 154.3 | 0.517 |
+| `21_L_R_W_S_L_R90_318` | 0.476 | 13.50 | 0.486 | 61.5 | 0.588 |
+| `23_L_R_W_S_L_R90_318` | 0.453 | 12.83 | 0.364 | 104.7 | 0.537 |
+| `04_RLWSRL90_245` | 0.523 | 12.88 | 0.357 | 110.7 | 0.570 |
+| `04_WSRLRL90_245` | 0.595 | 11.61 | 0.312 | 125.9 | 0.619 |
+| `31_WSRLRL90_245` | 0.608 | 11.61 | 0.317 | 156.1 | 0.645 |
+| `37_RLWSRL90_245` | 0.579 | 10.52 | 0.400 | 99.0 | 0.649 |
+| `23_RLWSRL90_245` | 0.467 | 11.71 | 0.330 | 106.2 | 0.545 |
+| `uni01_L_R_W_S_L_R90_318` | 0.367 | 15.16 | 0.500 | 38.9 | 0.468 |
+| `26_L_R_W_S_L_R90_318` | 0.336 | 16.74 | 0.498 | 38.5 | 0.402 |
+| `41_RLWSRL90_245` | 0.651 | 9.28 | 0.287 | 185.9 | 0.682 |
+| `24_WSRLRL90_245` | 0.548 | 15.79 | 0.536 | 129.8 | 0.575 |
+| **Mean of 12** | **0.505** | **12.85** | **0.391** | **109.3** | **0.566** |
 
 ### Memory
 
@@ -192,28 +193,28 @@ Full KV fits the 309-frame videos on A40 but not the 357-frame ones.
 
 - **The order matches.** Sliding Window is worst on every metric. Full KV is
   slightly ahead of WorldKV on LPIPS, PSNR and SSIM, and WorldKV slightly
-  ahead on FID (61.4 vs. 62.9), both as in Table 1. The difference to Sliding
+  ahead on FID (64.6 vs. 65.0), both as in Table 1. The difference to Sliding
   Window is largest on long-gap pairs, where memory matters.
 - **It holds entry by entry.** On LPIPS, Full KV beats Sliding Window on all
   12 entries and WorldKV on 11 of 12 (the exception is `31_WSRLRL90_245`);
-  WorldKV beats Full KV on 3 of 12. On per-entry FID, WorldKV beats Sliding
+  WorldKV beats Full KV on 2 of 12. On per-entry FID, WorldKV beats Sliding
   Window on all 12 entries and Full KV on 11 of 12. SSIM is the least
-  consistent metric: on 4 of 12 entries Sliding Window has the highest SSIM,
+  consistent metric: on 3 of 12 entries Sliding Window has the highest SSIM,
   even though its LPIPS is worse.
 - **One entry is hard for every method.** On `41_RLWSRL90_245` all three have
-  LPIPS about 0.69 and PSNR about 8.5; Sliding Window even has the highest
-  PSNR there.
-- **The gaps are smaller than in the paper.** WorldKV is 0.037 LPIPS better
-  than Sliding Window here, vs. 0.126 in the paper. Our Sliding Window matches
-  the paper's PSNR (12.17 vs. 12.18), but our Full KV and WorldKV are about
-  2.6 dB below the paper's.
+  LPIPS about 0.65-0.67 and PSNR about 9.1-9.3; Sliding Window even has the
+  highest PSNR there, by a hair.
+- **The gaps are smaller than in the paper.** WorldKV is 0.035 LPIPS better
+  than Sliding Window here, vs. 0.126 in the paper. Our Sliding Window is close
+  to the paper's PSNR (12.05 vs. 12.18), but our Full KV and WorldKV are about
+  2.6-2.8 dB below the paper's.
 - **Why the numbers can differ:** the paper's 60 scenes are not public, so we
   use different scenes (built from the authors' demo videos) and our own
   scene descriptions; 12 entries are far fewer than 60, so the absolute
   numbers are less reliable than the order; and the paper does not publish
-  its exact scoring protocol (e.g. which frames count as revisits). FID also
-  depends on the number of frames, so our FID is not directly comparable with
-  the paper's.
+  its exact scoring protocol (e.g. which frames count as revisits, or how
+  close two camera poses must be). FID also depends on the number of frames,
+  so our FID is not directly comparable with the paper's.
 
 ## Machine notes
 
