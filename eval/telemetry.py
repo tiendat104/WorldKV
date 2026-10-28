@@ -20,8 +20,14 @@ What is measured:
   - GPU memory per GPU: allocated and reserved, per chunk and at the peak.
   - CPU memory (RSS) of the process per chunk, e.g. for the CPU-side bank.
 
-GPUs run asynchronously, so the clock is read only after
-torch.cuda.synchronize(), i.e. once the GPU has finished the chunk.
+GPUs run asynchronously, so on a GPU the chunk times come from CUDA events
+recorded on the generation stream: a start and an end marker per chunk, which
+the GPU timestamps when it reaches them. Recording a marker does not wait for
+anything, so work on other streams (e.g. background CPU <-> GPU copies) keeps
+running across chunk boundaries. The times are read in save(), after the
+last chunk, waiting only for the generation stream. Pass `stream` when the
+generation does not run on the current stream. Without a GPU, the CPU clock
+is used.
 """
 
 import json
@@ -55,40 +61,48 @@ def _cpu_rss_gb():
 
 class ChunkTelemetry:
 
-    def __init__(self, path=None):
+    def __init__(self, path=None, stream=None):
         self.path = path
         self.enabled = path is not None
         self.cuda = torch.cuda.is_available()
+        self.stream = stream  # None: the current stream when each marker is recorded
         self.chunk_times_s = []
         self.chunk_video_frames = []
         self.gpu_mem_allocated_gb = []
         self.gpu_mem_reserved_gb = []
         self.cpu_rss_gb = []
         self._start = None
+        self._events = []  # (start, end) CUDA events per chunk, read in save()
         if self.enabled and self.cuda:
             # Peaks count from here: model weights already loaded are included.
             torch.cuda.reset_peak_memory_stats()
 
     @classmethod
-    def from_env(cls):
-        return cls(os.environ.get(ENV_VAR) or None)
+    def from_env(cls, stream=None):
+        return cls(os.environ.get(ENV_VAR) or None, stream)
 
-    def _sync(self):
-        if self.cuda:
-            torch.cuda.synchronize()
+    def _mark(self):
+        """A marker on the generation stream (GPU), or the CPU clock."""
+        if not self.cuda:
+            return time.perf_counter()
+        event = torch.cuda.Event(enable_timing=True)
+        event.record(self.stream if self.stream is not None else torch.cuda.current_stream())
+        return event
 
     def start_chunk(self):
         if not self.enabled:
             return
-        self._sync()
-        self._start = time.perf_counter()
+        self._start = self._mark()
 
     def end_chunk(self, latent_frames):
         """Close the current chunk, which generated `latent_frames` latent frames."""
         if not self.enabled:
             return
-        self._sync()
-        self.chunk_times_s.append(time.perf_counter() - self._start)
+        end = self._mark()
+        if self.cuda:
+            self._events.append((self._start, end))
+        else:
+            self.chunk_times_s.append(end - self._start)
         frames = VAE_STRIDE_T * latent_frames
         if not self.chunk_video_frames:
             frames -= VAE_STRIDE_T - 1  # latent frame 0 is a single video frame
@@ -109,7 +123,16 @@ class ChunkTelemetry:
             gathered = [mine]
         return [g[0] for g in gathered], [g[1] for g in gathered]
 
+    def _read_events(self):
+        """Turn the recorded CUDA markers into chunk times (once generation is done)."""
+        if not self._events:
+            return
+        self._events[-1][1].synchronize()  # waits for the generation stream only
+        self.chunk_times_s.extend(start.elapsed_time(end) / 1000 for start, end in self._events)
+        self._events = []
+
     def summary(self):
+        self._read_events()
         peak_alloc, peak_reserved = self._per_rank_peaks()
         fps = [f / t for f, t in zip(self.chunk_video_frames, self.chunk_times_s)]
         total_time = sum(self.chunk_times_s)

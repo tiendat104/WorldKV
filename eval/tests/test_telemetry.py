@@ -2,6 +2,8 @@ import json
 import os
 import time
 
+import pytest
+
 from eval import telemetry
 from eval.runner import REPO_ROOT
 
@@ -34,6 +36,66 @@ def test_records_chunks_and_saves(monkeypatch, tmp_path):
     assert abs(saved["fps_last_chunk"] - 12 / saved["chunk_times_s"][-1]) < 1e-9
     assert abs(saved["fps_mean"] - 33 / sum(saved["chunk_times_s"])) < 1e-9
     assert saved["num_gpus"] == 1
+
+
+class FakeEvent:
+    """Stands in for torch.cuda.Event: each record() advances a clock by 0.5 s."""
+    clock = 0.0
+
+    def __init__(self, enable_timing=False):
+        self.stream, self.time, self.waited = None, None, False
+
+    def record(self, stream):
+        FakeEvent.clock += 0.5
+        self.stream, self.time = stream, FakeEvent.clock
+
+    def synchronize(self):
+        self.waited = True
+
+    def elapsed_time(self, end):
+        return (end.time - self.time) * 1000  # milliseconds, like CUDA
+
+
+@pytest.fixture
+def fake_gpu(monkeypatch):
+    cuda = telemetry.torch.cuda
+
+    def no_synchronize():
+        raise AssertionError("torch.cuda.synchronize() would stall the other streams")
+
+    monkeypatch.setattr(cuda, "is_available", lambda: True)
+    monkeypatch.setattr(cuda, "synchronize", no_synchronize)
+    monkeypatch.setattr(cuda, "Event", FakeEvent)
+    monkeypatch.setattr(cuda, "current_stream", lambda *a, **k: "current")
+    monkeypatch.setattr(cuda, "reset_peak_memory_stats", lambda *a, **k: None)
+    monkeypatch.setattr(cuda, "get_device_name", lambda *a, **k: "fake")
+    for name in ("memory_allocated", "memory_reserved",
+                 "max_memory_allocated", "max_memory_reserved"):
+        monkeypatch.setattr(cuda, name, lambda *a, **k: 0)
+
+
+def test_gpu_times_come_from_events_without_waiting(fake_gpu, tmp_path):
+    path = tmp_path / "run.telemetry.json"
+    t = telemetry.ChunkTelemetry(str(path), stream="generation")
+    for _ in range(3):
+        t.start_chunk()
+        t.end_chunk(3)
+    # Nothing is read (so nothing waits) until the run ends.
+    assert t.chunk_times_s == []
+    assert all(e.stream == "generation" for pair in t._events for e in pair)
+    last_end = t._events[-1][1]
+    t.save()
+    assert last_end.waited  # only the generation stream's last marker
+    saved = json.loads(path.read_text())
+    assert saved["chunk_times_s"] == pytest.approx([0.5, 0.5, 0.5])
+    assert saved["fps_last_chunk"] == pytest.approx(12 / 0.5)
+
+
+def test_gpu_markers_default_to_current_stream(fake_gpu, tmp_path):
+    t = telemetry.ChunkTelemetry(str(tmp_path / "run.telemetry.json"))
+    t.start_chunk()
+    t.end_chunk(3)
+    assert [e.stream for e in t._events[0]] == ["current", "current"]
 
 
 def _distributed_worker(rank, world_size, path, port):
