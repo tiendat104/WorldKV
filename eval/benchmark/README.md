@@ -5,23 +5,17 @@ from the WorldKV authors' own demo videos so that our runs start from the same
 inputs as theirs. The paper's 60-scene benchmark is not public; this is the
 closest we can get to it.
 
-Check it before any GPU run:
-
-```bash
-python -m eval.check_benchmark eval/benchmark/benchmark.json
-```
-
 ## Files
 
 | File / folder | What | In git |
 |---|---|---|
-| `benchmark.json` | The 16 entries (scene + trajectory); read by `eval.runner` | yes |
+| `benchmark.json` | The 16 entries (scene + trajectory) | yes |
 | `final_images/` | The 16 scene pictures used by the benchmark | yes |
 | `prompts.json` | One description per scene | yes |
 | `traj/` | The 5 trajectories | yes |
 | `images_cleaned/` | The 12 first frames with the key overlay removed (input to `final_images/`) | yes |
-| `images/` | Raw first frames of the 16 videos | no (re-extract from the videos) |
-| `videos/` | The authors' 16 source videos (389 MB) | no (download, see below) |
+| `images/` | Raw first frames of the 16 videos | no |
+| `videos/` | The authors' 16 source videos (401 MB) | no |
 
 ## Source videos
 
@@ -43,10 +37,12 @@ its source video.
    changed only the key area: the rest of each picture is pixel-identical to
    the frame (checked), and the size is unchanged. Results in `images_cleaned/`.
    (A ChatGPT edit was rejected because it regenerated the whole picture.)
-3. **Cropped to 848 x 464** around the center, so every scene makes 464 x 848
-   videos: the 832 x 464 frames lose 4 pixels at the top and bottom; the
-   768 x 512 frames (15, uni01) lose 46. Scene 00's original picture is used
-   as is (it already makes 464 x 848 videos). Results in `final_images/`.
+3. **Cropped and resized to 848 x 464** around the center, so every scene
+   makes 464 x 848 videos: the 832 x 464 frames lose 4 pixels at the top and
+   bottom and are then enlarged by about 2%; the 768 x 512 frames (15, uni01)
+   lose 46 pixels at the top and bottom and are enlarged by about 10%. Scene
+   00's original picture is used as is (it already makes 464 x 848 videos).
+   Results in `final_images/`.
 4. **Descriptions** (`prompts.json`): scene 00 uses the authors' own
    (`examples/new/prompts.json`); the other 15 were written by us from each
    final picture, in the same style, saying what is on the left, center,
@@ -79,7 +75,8 @@ its source video.
 | `41_RLWSRL90_245` | `RLWSRL90_245` | frame 0, overlay removed | 237 | 81 |
 | `uni01_L_R_W_S_L_R90_318` | `L_R_W_S_L_R90_318` | frame 0 | 309 | 113 |
 
-In total 4,536 video frames per method (4.7 min of video).
+In total 4,536 video frames (4.7 min of video). Long-gap pairs are revisits
+whose first visit is more than 18 latent frames (72 video frames) earlier.
 
 ## Notes
 
@@ -91,7 +88,3 @@ In total 4,536 video frames per method (4.7 min of video).
 - **Pictures from video frames are a bit soft** (compressed web video); only
   scene 00 is the authors' sharp original. Except for 00, the descriptions
   are ours, not the authors'.
-- **Full KV does not fit on 46 GB GPUs (A40)** for the two 357-frame entries
-  (00, 15); run those on more or larger GPUs.
-- For every entry we also have the authors' own WorldKV video, so our scores
-  can be compared with theirs scene by scene (see `eval/authors_videos.py`).
