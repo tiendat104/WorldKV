@@ -9,23 +9,9 @@ WorldKV's Table 1 (LingBot-World-Fast rows). The code is built on
 
 | What | Where |
 |---|---|
-| **Metrics:** memory quality of a generated video, comparing each revisit frame with the first visit at the same camera pose (PSNR, SSIM, LPIPS, FID). How they work and how to score any video. | [`eval/README.md`](eval/README.md) |
-| **Benchmark:** 16 entries (scene picture, description, camera trajectory) built from the WorldKV authors' demo videos. | [`eval/benchmark/README.md`](eval/benchmark/README.md) |
+| **Metrics:** memory quality of a generated video, comparing each revisit frame with the first visit at the same camera pose (PSNR, SSIM, LPIPS, FID). How they work and how to score any video. | [`eval/`](eval/) |
+| **Benchmark:** 16 entries (scene picture, description, camera trajectory) built from the WorldKV authors' demo videos. | [`eval/benchmark/`](eval/benchmark/) |
 | **Replication:** how we generated and scored the benchmark with Sliding Window, Full KV and WorldKV, and the results. | [`eval/REPLICATION.md`](eval/REPLICATION.md) |
-
-## Main result
-
-On 12 of the 16 entries (4x A40), the paper's order is reproduced: Sliding
-Window is worst on every metric, and Full KV and WorldKV are close.
-
-| Method | LPIPS ↓ | PSNR ↑ | SSIM ↑ | FID ↓ |
-|---|---|---|---|---|
-| Sliding Window | 0.538 | 12.17 | 0.393 | 92.3 |
-| Full KV | **0.487** | **13.31** | **0.410** | 62.9 |
-| WorldKV | 0.501 | 13.08 | 0.401 | **61.4** |
-
-The gaps between methods are smaller than in the paper; details in
-[`eval/REPLICATION.md`](eval/REPLICATION.md).
 
 ## Installation
 
