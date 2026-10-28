@@ -16,8 +16,6 @@ python -m eval.check_benchmark eval/benchmark/benchmark.json
 | File / folder | What | In git |
 |---|---|---|
 | `benchmark.json` | The 16 entries (scene + trajectory); read by `eval.runner` | yes |
-| `pilot.json` | 4 of the 16 entries for a cheap first run: the 4 whose authors' WorldKV scores are closest to the mean of all 16 (`23_L_R_W_S_L_R90_318`, `21_L_R_W_S_L_R90_318`, `04_RLWSRL90_245`, `31_WSRLRL90_245`) | yes |
-| `first8.json` | 8 of the 16 entries for the next round (all 3 methods): the 4 pilot entries plus the next 4 closest to the mean that fit Full KV on 46 GB GPUs (`20_R_L_W_S_R_L90_318`, `04_WSRLRL90_245`, `37_RLWSRL90_245`, `23_RLWSRL90_245`). 309-frame entries come first, so Full KV's tightest memory case runs early | yes |
 | `final_images/` | The 16 scene pictures used by the benchmark | yes |
 | `prompts.json` | One description per scene | yes |
 | `traj/` | The 5 trajectories | yes |
