@@ -90,8 +90,7 @@ After generating, the runner scores every video with the metric code (see
   method's score the mean over its videos, so every entry counts equally;
 - FID and KID are computed once per method over all pairs of all its videos;
 - "long gaps" are the pairs whose first visit has left the attention window
-  (more than 18 latent frames earlier): they test long-term memory;
-- our videos are scored on whole frames, without any mask.
+  (more than 18 latent frames earlier): they test long-term memory.
 
 ### 3. Outputs
 
@@ -111,7 +110,7 @@ Everything goes in the `--out` folder (not in git):
 
 Because of our budget, we ran only 12 of the benchmark's 16 entries (see
 [What is left](#what-is-left)). All values below are from our own generated
-videos, scored without masks.
+videos.
 
 ### All 12 entries
 
@@ -128,10 +127,6 @@ LPIPS, PSNR and SSIM are means over the 12 entries; FID is computed once over
 all pairs of the 12 entries.
 
 ### Per entry
-
-FID per entry uses only one video's pairs (167 or 239), which is few for FID:
-these values are higher and noisier than the FID over all 12 entries, so
-compare methods within an entry rather than reading the absolute numbers.
 
 **Sliding Window**
 
