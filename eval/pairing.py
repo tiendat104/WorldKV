@@ -5,9 +5,11 @@ viewing direction in both. Each revisit is paired with the earliest frame
 at that pose. Only the trajectory's poses file is needed: no video, no GPU.
 
 Frame numbering follows WorldKV (wan/image2video_fast.py):
-  - the trajectory is trimmed to F = 4 * (lat_f - 1) + 1 video frames,
-    where lat_f is a multiple of the chunk size (3);
-  - video frame j uses camera pose j;
+  - the video has F = 4 * (lat_f - 1) + 1 frames, where lat_f is a multiple
+    of the chunk size (3);
+  - the poses are the ones generation gives each video frame (see
+    generation_poses): pose j of the file only when no poses are left over,
+    otherwise a slightly later point of the camera path;
   - latent frame 0 is video frame 0, latent k covers video frames 4k-3 .. 4k.
 
 Usage:
@@ -20,10 +22,18 @@ import json
 import os
 
 import numpy as np
+from scipy.spatial.transform import Rotation, Slerp
 
 VAE_STRIDE_T = 4  # video frames per latent frame (after the first)
 CHUNK_SIZE = 3  # latent frames per generated chunk
 SINK_LATENT_FRAMES = 3  # first latent frames kept in attention (paper, Sec. 5.1)
+# How close two poses must be to count as the same viewpoint. When generation
+# stretches the path, poses fall between the file's poses and rarely match
+# exactly; within these tolerances there are as many pairs as on unstretched
+# videos, where they change nothing (turns step 2 deg and moves 1/24 unit per
+# frame, so only identical poses are this close).
+ROT_TOL_DEG = 1.0
+TRANS_TOL = 0.02
 
 
 def load_poses(traj_dir):
@@ -45,6 +55,38 @@ def num_video_frames(num_poses, frame_num, chunk_size=CHUNK_SIZE):
     return (lat_f - 1) * VAE_STRIDE_T + 1
 
 
+def generation_poses(poses, frame_num, chunk_size=CHUNK_SIZE):
+    """The (F, 4, 4) pose of every video frame, as WorldKV's generation uses them.
+
+    Generation keeps the first ((frame_num - 1) // 4) * 4 + 1 poses (at most
+    all of them), but the video has num_video_frames() frames, a whole number
+    of chunks. It then spreads all kept poses evenly over the video's latent
+    frames (interpolate_camera_poses in wan/image2video_fast.py). So when more
+    poses are kept than the video has frames, video frame j shows the pose at
+    position j * (n - 1) / (F - 1) of the kept path, not pose j. Generation
+    gives poses only at latent frames (video frames 0, 4, 8, ...); frames in
+    between are taken on the same evenly spread path.
+    """
+    len_c2ws = ((len(poses) - 1) // VAE_STRIDE_T) * VAE_STRIDE_T + 1
+    kept = poses[:min(((frame_num - 1) // VAE_STRIDE_T) * VAE_STRIDE_T + 1, len_c2ws)]
+    frames = num_video_frames(len(poses), frame_num, chunk_size)
+    if len(kept) == frames:
+        return kept
+
+    n = len(kept)
+    t = np.arange(frames) * (n - 1) / (frames - 1)
+    # Same interpolation as WorldKV: linear for positions, slerp for rotations,
+    # with quaternion signs made continuous first.
+    quats = Rotation.from_matrix(kept[:, :3, :3]).as_quat()
+    for i in range(1, len(quats)):
+        if np.dot(quats[i], quats[i - 1]) < 0:
+            quats[i] = -quats[i]
+    out = np.tile(np.eye(4), (frames, 1, 1))
+    out[:, :3, :3] = Slerp(np.arange(n), Rotation.from_quat(quats))(t).as_matrix()
+    out[:, :3, 3] = np.stack([np.interp(t, np.arange(n), kept[:, k, 3]) for k in range(3)], axis=1)
+    return out
+
+
 def latent_index(frame):
     """Latent frame that contains the given video frame."""
     return 0 if frame == 0 else (frame - 1) // VAE_STRIDE_T + 1
@@ -56,7 +98,7 @@ def rotation_distance_deg(rots, rot):
     return np.degrees(np.arccos(np.clip(cos, -1.0, 1.0)))
 
 
-def find_pairs(poses, rot_tol_deg=0.5, trans_tol=1e-3,
+def find_pairs(poses, rot_tol_deg=ROT_TOL_DEG, trans_tol=TRANS_TOL,
                sink_latent_frames=SINK_LATENT_FRAMES):
     """Pair every frame with the earliest earlier frame at the same pose.
 
@@ -88,14 +130,18 @@ def find_pairs(poses, rot_tol_deg=0.5, trans_tol=1e-3,
 
 
 def build_pairs(traj_dir, frame_num, **kwargs):
-    """Load a trajectory, trim it like WorldKV, and find its pairs."""
+    """Load a trajectory, take the poses generation uses, and find its pairs."""
     poses = load_poses(traj_dir)
     frames = num_video_frames(len(poses), frame_num)
+    kept = min(((frame_num - 1) // VAE_STRIDE_T) * VAE_STRIDE_T + 1,
+               ((len(poses) - 1) // VAE_STRIDE_T) * VAE_STRIDE_T + 1)
     return {
         "trajectory": os.path.basename(os.path.normpath(traj_dir)),
         "num_video_frames": frames,
+        # > 1 when generation spread more poses than frames over the video
+        "stretch": (kept - 1) / (frames - 1),
         "sink_latent_frames": kwargs.get("sink_latent_frames", SINK_LATENT_FRAMES),
-        "pairs": find_pairs(poses[:frames], **kwargs),
+        "pairs": find_pairs(generation_poses(poses, frame_num), **kwargs),
     }
 
 
@@ -104,15 +150,16 @@ def main():
     parser.add_argument("traj_dir", help="Trajectory folder with a *poses.npy file.")
     parser.add_argument("--frame-num", type=int, required=True,
                         help="The --frame_num passed to generate_fast.py.")
-    parser.add_argument("--rot-tol-deg", type=float, default=0.5)
-    parser.add_argument("--trans-tol", type=float, default=1e-3)
+    parser.add_argument("--rot-tol-deg", type=float, default=ROT_TOL_DEG)
+    parser.add_argument("--trans-tol", type=float, default=TRANS_TOL)
     parser.add_argument("-o", "--output", help="Write the pairs to this JSON file.")
     args = parser.parse_args()
 
     result = build_pairs(args.traj_dir, args.frame_num,
                          rot_tol_deg=args.rot_tol_deg, trans_tol=args.trans_tol)
     pairs = result["pairs"]
-    print(f"{result['trajectory']}: {result['num_video_frames']} video frames, "
+    print(f"{result['trajectory']}: {result['num_video_frames']} video frames "
+          f"(path stretch x{result['stretch']:.3f}), "
           f"{len(pairs)} pairs, {sum(p['in_sink'] for p in pairs)} in sink")
     if args.output:
         with open(args.output, "w") as f:

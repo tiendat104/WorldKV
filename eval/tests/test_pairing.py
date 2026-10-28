@@ -1,3 +1,4 @@
+import importlib.util
 import os
 
 import numpy as np
@@ -8,6 +9,59 @@ from generate_traj import build_yaw_series, make_poses
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RLRLRL_DIR = os.path.join(REPO_ROOT, "traj", "R_L_R_L_R_L90_360")
+BENCH_TRAJ = os.path.join(REPO_ROOT, "eval", "benchmark", "traj")
+
+
+def worldkv_latent_poses(poses, frame_num):
+    """Latent-frame poses computed with the same steps as wan/image2video_fast.py."""
+    spec = importlib.util.spec_from_file_location(
+        "cam_utils", os.path.join(REPO_ROOT, "wan", "utils", "cam_utils.py"))
+    cam_utils = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cam_utils)
+    len_c2ws = ((len(poses) - 1) // 4) * 4 + 1
+    c2ws = poses[:min(((frame_num - 1) // 4) * 4 + 1, len_c2ws)]
+    lat_f = (len(c2ws) - 1) // 4 + 1
+    lat_f -= lat_f % 3
+    n = len(c2ws)
+    return cam_utils.interpolate_camera_poses(
+        src_indices=np.linspace(0, n - 1, n), src_rot_mat=c2ws[:, :3, :3],
+        src_trans_vec=c2ws[:, :3, 3], tgt_indices=np.linspace(0, n - 1, lat_f)).numpy()
+
+
+@pytest.mark.parametrize("name", ["R_L_W_S_R_L90_318", "RLWSRL90_245", "R_L_R_L_R_L90_360"])
+def test_generation_poses_match_worldkv(name):
+    # Latent frame k is video frame 4k, so every 4th pose must be WorldKV's.
+    poses = pairing.load_poses(os.path.join(BENCH_TRAJ, name))
+    frame_num = int(name.rsplit("_", 1)[1])
+    ours = pairing.generation_poses(poses, frame_num)
+    assert len(ours) == pairing.num_video_frames(len(poses), frame_num)
+    np.testing.assert_allclose(ours[::4], worldkv_latent_poses(poses, frame_num), atol=1e-5)
+
+
+def test_no_stretch_when_frame_count_fits():
+    # Asking for 309 frames keeps 309 poses for a 309-frame video: pose j is frame j.
+    traj_dir = os.path.join(BENCH_TRAJ, "R_L_W_S_R_L90_318")
+    poses = pairing.load_poses(traj_dir)
+    np.testing.assert_array_equal(pairing.generation_poses(poses, 309), poses[:309])
+    assert pairing.build_pairs(traj_dir, 309)["stretch"] == 1.0
+
+
+def test_stretched_path_pairs_same_viewpoints():
+    # Asking for 318 frames keeps 317 poses but makes a 309-frame video, so
+    # generation stretches the path. Frames 29 and 75 both face 60 deg in the
+    # file, but more than 5 deg apart in the video.
+    traj_dir = os.path.join(BENCH_TRAJ, "R_L_W_S_R_L90_318")
+    poses = pairing.load_poses(traj_dir)
+    gen = pairing.generation_poses(poses, 318)
+    assert pairing.rotation_distance_deg(poses[None, 29, :3, :3], poses[75, :3, :3])[0] < 0.1
+    assert pairing.rotation_distance_deg(gen[None, 29, :3, :3], gen[75, :3, :3])[0] > 5
+
+    result = pairing.build_pairs(traj_dir, 318)
+    assert result["stretch"] == pytest.approx(316 / 308)
+    for p in result["pairs"]:
+        i, j = p["first"], p["revisit"]
+        assert pairing.rotation_distance_deg(gen[None, i, :3, :3], gen[j, :3, :3])[0] <= pairing.ROT_TOL_DEG
+        assert np.linalg.norm(gen[i, :3, 3] - gen[j, :3, 3]) <= pairing.TRANS_TOL
 
 
 def test_num_video_frames_matches_worldkv_trimming():

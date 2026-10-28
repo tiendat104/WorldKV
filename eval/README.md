@@ -45,13 +45,25 @@ CUDA, Apple MPS or the CPU.
 `pairing.py` reads only the trajectory (its `*poses.npy` file: one 4x4
 camera-to-world matrix per video frame); it does not need the video.
 
-- Two frames pair up when the camera position (within 0.001) and viewing
-  direction (within 0.5°) are the same. Each revisit is paired with the
-  **earliest** frame at that pose.
-- The trajectory is trimmed exactly as WorldKV's generation code trims it,
-  so pair indices match the generated video frame by frame: video frame `j`
-  uses camera pose `j`, and the video has `4 * (lat_f - 1) + 1` frames, where
-  `lat_f` (latent frames) is a multiple of 3.
+- **Which poses.** Pairs are found on the poses generation actually gave each
+  video frame, which are not always the file's pose `j` for frame `j`.
+  WorldKV keeps the first `((frame_num - 1) // 4) * 4 + 1` poses, but the
+  video must be a whole number of chunks: `4 * (lat_f - 1) + 1` frames, where
+  `lat_f` (latent frames) is a multiple of 3. When more poses are kept than
+  the video has frames, generation spreads all of them evenly over the video.
+  For example, asking for 318 frames keeps 317 poses for a 309-frame video,
+  so frame `j` shows the pose at about `1.026 × j` of the path.
+  `pairing.py` computes the poses the same way. When the requested length is
+  already a whole number of chunks (e.g. 309), nothing is stretched and frame
+  `j` has pose `j`.
+- **When two frames pair up.** Their poses are within **1°** in viewing
+  direction and **0.02** in position (in the trajectory's units, where one
+  W/S move goes 1). Each revisit is paired with the **earliest** such frame.
+  A stretched path puts poses between the file's poses, so they rarely match
+  exactly; with these tolerances a stretched video has about as many pairs as
+  an unstretched one. On an unstretched video they give exactly the same pairs
+  as requiring identical poses, because turns move 2° and W/S moves 1/24 per
+  frame.
 - Every pair is put in a group by its gap in latent frames (1 latent frame =
   4 video frames):
 
@@ -87,10 +99,10 @@ The second command prints one line per group:
 
 ```
 group      n   LPIPS    PSNR   SSIM      FID
-all      239   0.449  12.666  0.311   152.48
-long     113   0.523  11.589  0.270   197.74
-short     99   0.328  14.392  0.386        -
-sink      27   0.586  10.850  0.207        -
+all      241   0.455  12.588  0.296   153.38
+long     115   0.517  11.740  0.272   202.99
+short     99   0.344  14.129  0.348        -
+sink      27   0.595  10.544  0.208        -
 ```
 
 Options:
@@ -98,7 +110,7 @@ Options:
 | Command | Option | Meaning |
 |---|---|---|
 | `eval.pairing` | `--frame-num` | The `--frame_num` given to the generator (required) |
-| | `--rot-tol-deg`, `--trans-tol` | How close two poses must be to count as the same (defaults 0.5 and 0.001) |
+| | `--rot-tol-deg`, `--trans-tol` | How close two poses must be to count as the same (defaults 1 and 0.02) |
 | | `-o` | Where to write the pairs |
 | `eval.metrics` | `--pairs` | Pairs file from `eval.pairing` (required) |
 | | `--window-latent` | Gap, in latent frames, above which a pair counts as `long` (default 18) |
@@ -115,9 +127,11 @@ to the wrong frames.
 `pairs.json`:
 
 ```
-{"trajectory": ..., "num_video_frames": ..., "sink_latent_frames": 3,
- "pairs": [{"first": 136, "revisit": 170, "gap_frames": 34, "gap_latent": 9, "in_sink": false}, ...]}
+{"trajectory": ..., "num_video_frames": 309, "stretch": 1.026, "sink_latent_frames": 3,
+ "pairs": [{"first": 130, "revisit": 168, "gap_frames": 38, "gap_latent": 9, "in_sink": false}, ...]}
 ```
+
+`stretch` is how much generation stretched the path (1 means not stretched).
 
 `scores.json`:
 

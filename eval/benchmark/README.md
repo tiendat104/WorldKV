@@ -94,21 +94,21 @@ video match the frame count of the authors' videos that use it.
 | Scene (= source video) | Trajectory | Picture | Video frames | Long-gap pairs |
 |---|---|---|---|---|
 | [`00_R_L_R_L_R_L90_360_compressed`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/worldkvfullkv/00_R_L_R_L_R_L90_360_compressed.mp4) | `R_L_R_L_R_L90_360` | authors' original input | 357 | 206 |
-| [`01_R_L_W_S_R_L90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/01_R_L_W_S_R_L90_318.mp4) | `R_L_W_S_R_L90_318` | frame 0, overlay removed | 309 | 113 |
-| [`04_RLWSRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/04_RLWSRL90_245.mp4) | `RLWSRL90_245` | frame 0, overlay removed | 237 | 81 |
-| [`04_WSRLRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/04_WSRLRL90_245.mp4) | `WSRLRL90_245` | frame 0, overlay removed | 237 | 108 |
+| [`01_R_L_W_S_R_L90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/01_R_L_W_S_R_L90_318.mp4) | `R_L_W_S_R_L90_318` | frame 0, overlay removed | 309 | 115 |
+| [`04_RLWSRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/04_RLWSRL90_245.mp4) | `RLWSRL90_245` | frame 0, overlay removed | 237 | 86 |
+| [`04_WSRLRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/04_WSRLRL90_245.mp4) | `WSRLRL90_245` | frame 0, overlay removed | 237 | 111 |
 | [`15_R_L_R_L_R_L90_360_compressed`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/worldkvfullkv/15_R_L_R_L_R_L90_360_compressed.mp4) | `R_L_R_L_R_L90_360` | frame 0 | 357 | 206 |
-| [`20_R_L_W_S_R_L90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/20_R_L_W_S_R_L90_318.mp4) | `R_L_W_S_R_L90_318` | frame 0, overlay removed | 309 | 113 |
-| [`21_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/21_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0, overlay removed | 309 | 113 |
-| [`23_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/23_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0, overlay removed | 309 | 113 |
-| [`23_RLWSRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/23_RLWSRL90_245.mp4) | `RLWSRL90_245` | frame 0 | 237 | 81 |
-| [`24_WSRLRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/24_WSRLRL90_245.mp4) | `WSRLRL90_245` | frame 0, overlay removed | 237 | 108 |
-| [`26_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/26_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0, overlay removed | 309 | 113 |
-| [`29_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/29_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0, overlay removed | 309 | 113 |
-| [`31_WSRLRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/31_WSRLRL90_245.mp4) | `WSRLRL90_245` | frame 0, overlay removed | 237 | 108 |
-| [`37_RLWSRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/37_RLWSRL90_245.mp4) | `RLWSRL90_245` | frame 0, overlay removed | 237 | 81 |
-| [`41_RLWSRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/41_RLWSRL90_245.mp4) | `RLWSRL90_245` | frame 0, overlay removed | 237 | 81 |
-| [`uni01_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/uni01_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0 | 309 | 113 |
+| [`20_R_L_W_S_R_L90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/20_R_L_W_S_R_L90_318.mp4) | `R_L_W_S_R_L90_318` | frame 0, overlay removed | 309 | 115 |
+| [`21_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/21_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0, overlay removed | 309 | 115 |
+| [`23_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/23_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0, overlay removed | 309 | 115 |
+| [`23_RLWSRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/23_RLWSRL90_245.mp4) | `RLWSRL90_245` | frame 0 | 237 | 86 |
+| [`24_WSRLRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/24_WSRLRL90_245.mp4) | `WSRLRL90_245` | frame 0, overlay removed | 237 | 111 |
+| [`26_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/26_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0, overlay removed | 309 | 115 |
+| [`29_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/29_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0, overlay removed | 309 | 115 |
+| [`31_WSRLRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/31_WSRLRL90_245.mp4) | `WSRLRL90_245` | frame 0, overlay removed | 237 | 111 |
+| [`37_RLWSRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/37_RLWSRL90_245.mp4) | `RLWSRL90_245` | frame 0, overlay removed | 237 | 86 |
+| [`41_RLWSRL90_245`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/41_RLWSRL90_245.mp4) | `RLWSRL90_245` | frame 0, overlay removed | 237 | 86 |
+| [`uni01_L_R_W_S_L_R90_318`](https://github.com/cvlab-kaist/WorldKV/blob/315be40cfe601b724d05bc2d4ba4ff676f10426d/world_videos/dynamic/uni01_L_R_W_S_L_R90_318.mp4) | `L_R_W_S_L_R90_318` | frame 0 | 309 | 115 |
 
 In total 4,536 video frames (4.7 min of video). Long-gap pairs are revisits
 whose first visit is more than 18 latent frames (72 video frames) earlier.
