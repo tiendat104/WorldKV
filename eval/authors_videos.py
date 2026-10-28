@@ -54,7 +54,7 @@ VIDEOS = [
     ("dynamic/20_R_L_W_S_R_L90_318.mp4", "20", "R_L_W_S_R_L90_318", "worldkv", True),
     ("dynamic/21_L_R_W_S_L_R90_318.mp4", "21", "L_R_W_S_L_R90_318", "worldkv", True),
     ("dynamic/23_L_R_W_S_L_R90_318.mp4", "23", "L_R_W_S_L_R90_318", "worldkv", True),
-    ("dynamic/23_RLWSRL90_245.mp4", "23", "RLWSRL90_245", "worldkv", True),
+    ("dynamic/23_RLWSRL90_245.mp4", "23", "RLWSRL90_245", "worldkv", False),
     ("dynamic/24_WSRLRL90_245.mp4", "24", "WSRLRL90_245", "worldkv", True),
     ("dynamic/26_L_R_W_S_L_R90_318.mp4", "26", "L_R_W_S_L_R90_318", "worldkv", True),
     ("dynamic/29_L_R_W_S_L_R90_318.mp4", "29", "L_R_W_S_L_R90_318", "worldkv", True),
