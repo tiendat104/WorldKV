@@ -1,136 +1,59 @@
-<div align="center">
-<h1>WorldKV: Efficient World Memory with World Retrieval and Compression</h1>
+# Evaluation harness for the LTWM project (CS854)
 
-[**Jung Yi**](https://yj-142150.github.io/jungyi/)<sup>1</sup> · [**Minjae Kim**](https://github.com/kwjames98/)<sup>1</sup> · [**Paul Hyunbin Cho**](https://openreview.net/profile?id=~Paul_Hyunbin_Cho1)<sup>1</sup> · [**Wooseok Jang**](https://woo1726.github.io/)<sup>1</sup> · [**Sangdoo Yun**](https://sangdooyun.github.io/)<sup>2</sup> · [**Seungryong Kim**](https://cvlab.korea.ac.kr)<sup>1</sup>
+Tools to evaluate world-model memory, a benchmark, and our replication of
+WorldKV's Table 1 (LingBot-World-Fast rows). The code is built on
+[WorldKV](https://github.com/cvlab-kaist/WorldKV) (Apache 2.0, see
+`LICENSE.txt`); everything we added is in [`eval/`](eval/).
 
-<sup>1</sup>KAIST AI&emsp;<sup>2</sup>Naver AI
+## What is here
 
-<span style="font-size: 16px; font-weight: 700;">
-  <a href="https://cvlab-kaist.github.io/WorldKV/">https://cvlab-kaist.github.io/WorldKV/</a>
-</span>
+| What | Where |
+|---|---|
+| **Metrics:** memory quality of a generated video, comparing each revisit frame with the first visit at the same camera pose (PSNR, SSIM, LPIPS, FID). How they work and how to score any video. | [`eval/README.md`](eval/README.md) |
+| **Benchmark:** 16 entries (scene picture, description, camera trajectory) built from the WorldKV authors' demo videos. | [`eval/benchmark/README.md`](eval/benchmark/README.md) |
+| **Replication:** how we generated and scored the benchmark with Sliding Window, Full KV and WorldKV, and the results. | [`eval/REPLICATION.md`](eval/REPLICATION.md) |
 
-</div>
+## Main result
 
+On 12 of the 16 entries (4x A40), the paper's order is reproduced: Sliding
+Window is worst on every metric, and Full KV and WorldKV are close.
 
-<div align="center">
+| Method | LPIPS ↓ | PSNR ↑ | SSIM ↑ | FID ↓ |
+|---|---|---|---|---|
+| Sliding Window | 0.538 | 12.17 | 0.393 | 92.3 |
+| Full KV | **0.487** | **13.31** | **0.410** | 62.9 |
+| WorldKV | 0.501 | 13.08 | 0.401 | **61.4** |
 
+The gaps between methods are smaller than in the paper; details in
+[`eval/REPLICATION.md`](eval/REPLICATION.md).
 
-</div>
+## Installation
 
------
-WorldKV is a training-free framework that enables efficient world memory in autoregressive video world models by combining World Retrieval and World Compression.
+Scoring videos (no GPU needed):
 
-## 🚀 Progress
-
-- [x] LingBot-World-Fast
-- [ ] Inspatio-World
-- [ ] Matrix-Game-2.0
-
-### Installation
-Clone the repo:
-```sh
-git clone https://github.com/cvlab-kaist/WorldKV.git
-cd WorldKV
+```bash
+pip install -r eval/requirements.txt
 ```
-Install dependencies:
-```sh
-# Ensure torch >= 2.4.0
+
+Generating videos with WorldKV also needs its requirements, `flash_attn`, and
+the model files:
+
+```bash
 pip install -r requirements.txt
-```
-Install [`flash_attn`](https://github.com/Dao-AILab/flash-attention):
-```sh
 pip install flash-attn --no-build-isolation
-```
-
-
-Download models using huggingface-cli:
-```sh
-pip install "huggingface_hub[cli]"
-
 huggingface-cli download robbyant/lingbot-world-base-cam --local-dir ./lingbot-world-base-cam
-
 huggingface-cli download robbyant/lingbot-world-fast --local-dir ./lingbot-world-base-cam/lingbot_world_fast
 ```
 
-### Inference
-Before running inference, you need to prepare:
-- Input image
-- Text prompt
-- Control signals 
-  - `intrinsics.npy`: Shape `[num_frames, 4]`, where the 4 values represent `[fx, fy, cx, cy]`
-  - `poses.npy`: Shape `[num_frames, 4, 4]`, where each `[4, 4]` represents a transformation matrix in OpenCV coordinates
+## Changes to WorldKV's code
 
-#### Quick Start
+Outside `eval/`, the only code change is 12 added lines in
+`wan/image2video_fast.py`:
 
-A single run on 4 GPUs with camera-pose retrieval + store-time compression:
-
-```sh
-CUDA_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 generate_fast.py \
-    --task i2v-A14B \
-    --size 480*832 \
-    --ckpt_dir ./lingbot-world-base-cam \
-    --image examples/new/00.png \
-    --prompt "A sun-drenched stable courtyard paved with weathered cobblestones stretches before a sturdy stone-and-timber barn, where a chestnut horse stands quietly in the shade — a young adventurer in a blue tunic faces the open structure, shield on their back, as vast rolling green hills and rocky outcrops unfurl under a bright clear sky, evoking the boundless wonder of an open-world journey." \
-    --action_path traj/R_L_R_L_R_L90_360 \
-    --frame_num 360 \
-    --save_dir outputs/demo \
-    --dit_fsdp --t5_fsdp --ulysses_size 4 \
-    --use_retrieval --retrieval_frames 18 --kv_bank_on_gpu \
-    --kv_compression_enable --kv_compression_keep_ratio 0.5 --kv_compression_at_store --kv_compression_pooled
-```
-
-> Set `--ulysses_size` equal to `--nproc_per_node` (number of GPUs), and `--frame_num` to the trajectory length (e.g. `traj/..._360` → `360`).
-
-#### Arguments
-
-**Parallelism & memory**
-
-| Argument | Description |
-|----------|-------------|
-| `offload_model` | Offload model to CPU between forwards. |
-| `kv_bank_on_gpu` | Keep the KV bank in VRAM instead of CPU (faster, Recommended when VRAM is enough). |
-
-**KV-cache mode** — mutually exclusive; default is a local `sink + recent` window.
-
-| Argument | Description |
-|----------|-------------|
-| `use_retrieval` | Retrieve past chunks by camera-pose similarity. Window = `sink + retrieved + recent`. |
-| `retrieval_frames` | Frames retrieved from the bank; multiple of `chunk_size` (3), e.g. `18` = 6 chunks. |
-| `retrieval_rope_correction` | Rebase retrieved KV to contiguous temporal positions before `recent`. |
-
-**KV compression** — anchor + novelty token pruning on retrieved KV.
-
-| Argument | Description |
-|----------|-------------|
-| `kv_compression_enable` | Switch for token pruning (required for the flags below). |
-| `kv_compression_keep_ratio` | Portion of tokens kept per non-anchor frame (anchor frame kept in full) in each chunk. |
-| `kv_compression_at_store` | Prune once at store time. Recommended. |
-| `kv_compression_pooled` | Share the keep budget across a chunk's non-anchor frames. |
-
-
-To run it directly, use the provided script:
-``` sh
-bash run_retrieval_compress.sh
-```
-
-
-## 📚 Related Projects
-- [Deep Forcing](https://cvlab-kaist.github.io/DeepForcing/)
-- [LingBot-World](https://github.com/Robbyant/lingbot-world/)
-- [Inspatio-World](https://inspatio.github.io/inspatio-world/)
-- [Matrix-Game](https://matrix-game-v2.github.io/)
-
-## 📜 License
-This project is licensed under the Apache 2.0 License. Please refer to the [LICENSE file](LICENSE.txt) for the full text, including details on rights and restrictions.
-
-## 📖 Citation
-If you find this work useful for your research, please cite our paper:
-
-```
-@article{yi2026worldkv,
-  title={WorldKV: Efficient World Memory with World Retrieval and Compression},
-  author={Yi, Jung and Kim, Minjae and Cho, Paul Hyunbin and Jang, Wooseok and Yun, Sangdoo and Kim, Seungryong},
-  journal={arXiv preprint arXiv:2605.22718},
-  year={2026}
-}
-```
+- **Timing hooks:** one import of `eval/telemetry.py` and four calls around
+  the chunk loop, recording time and memory per chunk. They do nothing unless
+  the `WORLDKV_TELEMETRY` environment variable is set.
+- **Freeing memory before decoding:** after the last chunk, the KV cache and
+  stored chunks are released before the VAE decodes the video. Without this,
+  decoding ran out of memory on 46 GB GPUs. The videos are pixel-identical
+  with and without it.
