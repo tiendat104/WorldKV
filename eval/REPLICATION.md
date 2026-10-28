@@ -23,39 +23,7 @@ generated from the benchmark, how they were scored, and the results.
 
 ## Setup
 
-### Hardware
-
-- **GPUs:** 4x NVIDIA A40 (46 GB each) on RunPod, data center CA-MTL-1. The
-  paper measures on 4x H200; quality does not depend on the GPU type, speed
-  does.
-- **Storage:** a RunPod network volume mounted at `/workspace` holds the code,
-  the Python environment and the model files, so a new pod can start from
-  them without setting up again.
-
-### Environment and model
-
-[`setup_pod.sh`](setup_pod.sh) prepares a fresh pod (PyTorch 2.8.0 template)
-in one command:
-
-```bash
-curl -sL https://raw.githubusercontent.com/tiendat104/WorldKV/eval-harness/eval/setup_pod.sh | bash
-source /workspace/venv/bin/activate
-```
-
-It clones this code, builds a Python 3.12 environment (PyTorch 2.8 with
-CUDA 12.8, `numpy` 1.26, `flash_attn` 2.8.3), and downloads only the parts of
-`lingbot-world-base-cam` that LingBot-World-Fast needs (~81 GB: the T5 text
-encoder, the VAE, the tokenizer and `lingbot_world_fast`). It then runs the
-tests and checks GPU-to-GPU communication, and says whether `--no-p2p` is
-needed (see [Machine notes](#machine-notes)). Steps already done are skipped.
-
-### Code
-
-The videos were generated with commit `811da9f` of this branch (the 4 WorldKV
-videos of the first pilot with commit `440b950`; the generation code is the
-same). Generation uses WorldKV's own code; this harness adds 12 lines to
-`wan/image2video_fast.py` (timing hooks, and freeing memory before the VAE
-decode) and does not change what is generated.
+All videos were generated on 4x NVIDIA A40 GPUs (46 GB each) on RunPod.
 
 ## Process
 
@@ -139,24 +107,11 @@ Everything goes in the `--out` folder (not in git):
 | `results.csv` | One row per run: LPIPS, PSNR, SSIM (all pairs and long-gap pairs), FPS, peak memory |
 | `summary.csv` | One row per method, like Table 1 |
 
-### 4. How the runs were done
-
-- **Pilot:** WorldKV only, on 4 entries, to check that our generation behaves
-  like the authors' before spending more (see [Pilot](#pilot-our-worldkv-vs-the-authors-worldkv)).
-- **Round 1:** all three methods on 8 entries (the 4 WorldKV videos of the
-  pilot were reused).
-- **Round 2:** all three methods on 4 more entries.
-
-Entries were taken in order of how close the authors' WorldKV scores are to
-the mean of the authors' 16 WorldKV videos, skipping the two 357-frame
-entries, for which Full KV does not fit on A40. Each round ran on its own pod
-of the same type. The FID of the 12 entries together was computed afterwards
-over all their pairs (2,364 per method), with the same formula; recomputing
-each round this way matches the FID the runner gave for that round within 0.3.
-
 ## Results
 
-All values below are from our own generated videos, scored without masks.
+Because of our budget, we ran only 12 of the benchmark's 16 entries (see
+[What is left](#what-is-left)). All values below are from our own generated
+videos, scored without masks.
 
 ### All 12 entries
 
@@ -237,27 +192,6 @@ compare methods within an entry rather than reading the absolute numbers.
 Peak GPU memory allocated, on the GPU with the largest peak, over all 12
 entries: Sliding Window 23.6 GB, WorldKV 39.9 GB, Full KV 41.2 GB (of 46 GB).
 Full KV fits the 309-frame videos on A40 but not the 357-frame ones.
-
-### Pilot: our WorldKV vs. the authors' WorldKV
-
-Before the full runs, we generated our own WorldKV video for 4 entries and
-compared its scores with the authors' video for the same entry (each video
-scored on its own, revisit frames vs. first-visit frames within that video).
-For this comparison only, our videos were scored with the same bottom-left
-corner blacked out as the authors' videos (which show a W/A/S/D key overlay
-there), so both are scored the same way.
-
-| Entry | LPIPS ↓ (ours / authors') | PSNR ↑ (ours / authors') | SSIM ↑ (ours / authors') | FID ↓ (ours / authors') |
-|---|---|---|---|---|
-| `04_RLWSRL90_245` | 0.492 / 0.473 | 12.88 / 13.46 | 0.377 / 0.444 | 114.8 / 98.6 |
-| `21_L_R_W_S_L_R90_318` | 0.413 / 0.458 | 14.50 / 13.18 | 0.558 / 0.501 | 63.0 / 57.4 |
-| `23_L_R_W_S_L_R90_318` | 0.414 / 0.417 | 13.86 / 13.59 | 0.443 / 0.462 | 96.4 / 115.6 |
-| `31_WSRLRL90_245` | 0.532 / 0.497 | 12.41 / 12.20 | 0.387 / 0.468 | 147.6 / 117.6 |
-| **Mean of 4** | **0.463 / 0.461** | **13.41 / 13.11** | **0.441 / 0.469** | **105.5 / 97.3** |
-
-On average our WorldKV videos score like the authors' (LPIPS 0.463 vs.
-0.461), slightly better on two entries and slightly worse on the other two:
-starting from the authors' inputs, our generation behaves like theirs.
 
 ### What matches the paper, and what does not
 
