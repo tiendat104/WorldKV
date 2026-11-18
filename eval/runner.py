@@ -240,6 +240,31 @@ def read_json(path):
         return json.load(f)
 
 
+def progress_files(job):
+    """The per-rank progress files eval/telemetry.py writes during a run."""
+    return sorted(glob.glob(job["telemetry"] + ".rank*.progress.json"))
+
+
+def failure_details(job, log_path):
+    """How far a crashed run got, its GPU memory so far, and whether the GPU ran out."""
+    details = {}
+    progress = [p for p in map(read_json, progress_files(job)) if p]
+    if progress:
+        details["chunks_done"] = min(p["chunks_done"] for p in progress)
+        reserved = [p["peak_gpu_mem_reserved_gb"] for p in progress
+                    if p.get("peak_gpu_mem_reserved_gb") is not None]
+        details["peak_gpu_mem_reserved_gb_so_far"] = max(reserved) if reserved else None
+    else:
+        details["chunks_done"] = 0  # e.g. out of memory while allocating the KV cache
+    try:
+        with open(log_path, errors="replace") as f:
+            tail = f.read()[-50000:]  # the failed job is the worker's last one
+        details["out_of_memory"] = "OutOfMemoryError" in tail or "CUDA out of memory" in tail
+    except OSError:
+        details["out_of_memory"] = None
+    return details
+
+
 def run_jobs(jobs, out_dir, args, launch=launch_worker):
     """Generate all jobs with as few model loads as possible.
 
@@ -259,6 +284,9 @@ def run_jobs(jobs, out_dir, args, launch=launch_worker):
         os.makedirs(os.path.dirname(jobs_file), exist_ok=True)
         with open(jobs_file, "w") as f:
             json.dump(todo, f, indent=1)
+        for job in todo:  # left by an earlier crashed attempt; would be misread
+            for path in progress_files(job):
+                os.remove(path)
         print(f"[worker] {len(todo)} videos, model loaded once (log: {log_path})", flush=True)
         returncode = launch(jobs_file, log_path, args)
 
@@ -269,12 +297,15 @@ def run_jobs(jobs, out_dir, args, launch=launch_worker):
                 progress = True
             elif meta.get("status") == "running":
                 # The worker stopped during this job.
-                meta.update(status="failed", returncode=returncode, log=log_path)
+                meta.update(status="failed", returncode=returncode, log=log_path,
+                            **failure_details(job, log_path))
                 with open(job["meta"], "w") as f:
                     json.dump(meta, f, indent=1)
                 failed.add(job["name"])
                 progress = True
-                print(f"[fail] {job['name']}: worker exit code {returncode}, see {log_path}")
+                oom = " (out of GPU memory)" if meta.get("out_of_memory") else ""
+                print(f"[fail] {job['name']}: worker exit code {returncode}{oom} after "
+                      f"{meta['chunks_done']} chunks, see {log_path}")
         if not progress:
             print(f"[fail] worker exit code {returncode} before finishing any video, "
                   f"see {log_path}")
@@ -322,7 +353,8 @@ def generate_all(entries, methods, out_dir, args, launch=launch_worker):
 def read_telemetry(path):
     """FPS and memory columns from a run's telemetry file (None if missing)."""
     row = {"fps_last_chunk": None, "fps_mean": None, "peak_gpu_mem_gb": None,
-           "peak_gpu_mem_reserved_gb": None, "peak_cpu_rss_gb": None}
+           "peak_gpu_mem_reserved_gb": None, "peak_cpu_rss_gb": None,
+           "peak_cpu_rss_total_gb": None, "peak_bank_gb": None}
     if not os.path.exists(path):
         return row
     with open(path) as f:
@@ -337,7 +369,10 @@ def read_telemetry(path):
     # Largest of the GPUs, since the run fails if any one GPU runs out.
     row["peak_gpu_mem_gb"] = peak(t.get("peak_gpu_mem_allocated_gb"))
     row["peak_gpu_mem_reserved_gb"] = peak(t.get("peak_gpu_mem_reserved_gb"))
-    row["peak_cpu_rss_gb"] = peak(t.get("cpu_rss_gb"))
+    row["peak_cpu_rss_gb"] = peak(t.get("cpu_rss_gb"))  # rank 0, sampled per chunk
+    # All processes together (sum of each one's true peak), and the retrieval bank.
+    row["peak_cpu_rss_total_gb"] = t.get("peak_cpu_rss_total_gb")
+    row["peak_bank_gb"] = t.get("peak_bank_gb")
     return row
 
 
@@ -387,7 +422,8 @@ def score_all(entries, methods, out_dir, device, use_fid=True):
             vals = [r[key] for r in ok_rows if r.get(key) is not None]
             srow[key] = float(np.mean(vals)) if vals else None
         # Memory: the largest peak over all videos (what the method needs).
-        for key in ("peak_gpu_mem_gb", "peak_gpu_mem_reserved_gb", "peak_cpu_rss_gb"):
+        for key in ("peak_gpu_mem_gb", "peak_gpu_mem_reserved_gb", "peak_cpu_rss_gb",
+                    "peak_cpu_rss_total_gb", "peak_bank_gb"):
             vals = [r[key] for r in ok_rows if r.get(key) is not None]
             srow[key] = float(np.max(vals)) if vals else None
         # Set metrics: pooled over all videos of the method.

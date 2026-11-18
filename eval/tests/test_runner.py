@@ -153,6 +153,50 @@ def test_worker_restarted_after_a_crash(tmp_path):
     assert jobs[0]["meta_fields"]["command"][-len(jobs[0]["argv"]):] == jobs[0]["argv"]
 
 
+def test_failed_run_records_progress_and_out_of_memory(tmp_path):
+    entries = runner.load_benchmark(DEV_BENCHMARK)[:2]
+    out = str(tmp_path / "out")
+    args = argparse.Namespace(fake=False, dry_run=False, seed=42, ckpt_dir="/ckpt",
+                              nproc=2, no_p2p=True)
+    jobs = [runner.make_job(e, "gpu_only", out, args) for e in entries]
+    # A progress file left by an earlier attempt must not be read for this one.
+    os.makedirs(os.path.dirname(jobs[1]["telemetry"]), exist_ok=True)
+    with open(jobs[1]["telemetry"] + ".rank0.progress.json", "w") as f:
+        json.dump({"chunks_done": 99}, f)
+
+    def fake_worker(jobs_file, log_path, args):
+        # Job 1 runs out of GPU memory after 5 chunks on rank 0 and 4 on rank 1;
+        # job 2 runs out while allocating, before its first chunk.
+        with open(jobs_file) as f:
+            job = json.load(f)[0]
+        with open(job["meta"], "w") as f:
+            json.dump({"status": "running"}, f)
+        if job["name"] == jobs[0]["name"]:
+            for rank, done, peak in [(0, 5, 43.0), (1, 4, 44.1)]:
+                with open(f"{job['telemetry']}.rank{rank}.progress.json", "w") as f:
+                    json.dump({"chunks_done": done, "peak_gpu_mem_reserved_gb": peak}, f)
+        with open(log_path, "w") as f:
+            f.write("torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 GiB\n")
+        return 1
+
+    runner.run_jobs(jobs, out, args, launch=fake_worker)
+    first, second = (runner.read_json(j["meta"]) for j in jobs)
+    assert first["status"] == "failed" and first["out_of_memory"] is True
+    assert first["chunks_done"] == 4 and first["peak_gpu_mem_reserved_gb_so_far"] == 44.1
+    assert second["status"] == "failed" and second["out_of_memory"] is True
+    assert second["chunks_done"] == 0
+
+
+def test_read_telemetry_memory_columns(tmp_path):
+    path = tmp_path / "run.telemetry.json"
+    path.write_text(json.dumps({
+        "peak_gpu_mem_allocated_gb": [40.0, 41.0], "peak_gpu_mem_reserved_gb": [42.0, 43.5],
+        "cpu_rss_gb": [10.0, 12.0], "peak_cpu_rss_total_gb": 50.0, "peak_bank_gb": 7.5}))
+    row = runner.read_telemetry(str(path))
+    assert row["peak_gpu_mem_reserved_gb"] == 43.5 and row["peak_cpu_rss_gb"] == 12.0
+    assert row["peak_cpu_rss_total_gb"] == 50.0 and row["peak_bank_gb"] == 7.5
+
+
 def make_tiny_benchmark(root):
     """One scene (a 32x48 picture) and one short turn-right-then-left trajectory."""
     os.makedirs(os.path.join(root, "images"))

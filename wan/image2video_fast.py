@@ -24,6 +24,7 @@ from .modules.model_fast import WanModelFast, _compress_retrieval_kv
 from .modules.t5 import T5EncoderModel
 from .modules.vae2_1 import Wan2_1_VAE
 from .retrieval_schedule import (
+    bank_bytes,
     check_retrieval,
     chunks_to_free,
     free_chunks,
@@ -543,6 +544,7 @@ class WanI2VFast:
                                                  bank_len=len(kv_bank_k[0]))
                     if free_after is not None:
                         check_retrieval(chunk_id, selected_ids, schedule[chunk_id], kv_bank_k[0])
+                    telemetry.record_retrieval(selected_ids)
 
                     if selected_ids:
                         retr_frames = [sid * chunk_size for sid in selected_ids]
@@ -674,6 +676,8 @@ class WanI2VFast:
                             )
                         kv_bank_k[layer_idx].append(k_slice.to(bank_device).clone())
                         kv_bank_v[layer_idx].append(v_slice.to(bank_device).clone())
+                    # The bank is largest here: the new chunk is in, nothing freed yet.
+                    telemetry.record_bank(bank_bytes(kv_bank_k, kv_bank_v))
                     if free_after is not None:
                         free_chunks(kv_bank_k, kv_bank_v, free_after[chunk_id])
                     if store_compress and chunk_id == 0 and kv_bank_k[0][0] is not None:
