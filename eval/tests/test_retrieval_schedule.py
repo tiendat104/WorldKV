@@ -76,7 +76,8 @@ def synthetic_poses(kind, num_frames=120):
         # Turn 30 frames, stand still 30 frames, turn back, stand still: many ties.
         angles = np.concatenate([np.linspace(0, 90, 30), np.full(30, 90.0),
                                  np.linspace(90, 0, 30), np.zeros(30)])
-        c2ws[:, :3, :3] = Rotation.from_euler("y", angles, degrees=True).as_matrix()
+        # One column of angles: newer SciPy (1.17) rejects a flat array here.
+        c2ws[:, :3, :3] = Rotation.from_euler("y", angles[:, None], degrees=True).as_matrix()
     # "still": every pose is the identity, so every distance is 0.
     return torch.from_numpy(c2ws).float()
 
