@@ -218,7 +218,7 @@ def make_tiny_benchmark(root):
     return path
 
 
-def test_fake_run_end_to_end(tmp_path):
+def test_fake_run_end_to_end(tmp_path, monkeypatch):
     entries = runner.load_benchmark(make_tiny_benchmark(str(tmp_path / "bench")))
     out = str(tmp_path / "out")
     args = argparse.Namespace(fake=True, dry_run=False, seed=42, ckpt_dir=None, nproc=1,
@@ -252,3 +252,25 @@ def test_fake_run_end_to_end(tmp_path):
     assert gpu_only["peak_gpu_mem_gb"] == 52.5  # the largest of the 4 GPUs
     assert gpu_only["peak_cpu_rss_gb"] == 12.0
     assert summary[1]["fps_last_chunk"] == 4.8
+
+    # Without scoring: no quality metric is computed, speed and memory are kept.
+    def no_metrics(device):
+        raise AssertionError("quality metrics must not be loaded with score=False")
+
+    monkeypatch.setattr(runner, "PairMetrics", no_metrics)
+    results, summary = runner.score_all(entries, methods, out, torch.device("cpu"), score=False)
+    assert all(r["status"] == "ok" and "lpips" not in r for r in results)
+    assert results[1]["peak_gpu_mem_gb"] == 52.5 and summary[1]["fps_last_chunk"] == 4.8
+    assert summary[1]["lpips"] is None and "fid" not in summary[1]
+
+
+def test_failed_runs_listed_with_their_progress(tmp_path):
+    entries = runner.load_benchmark(make_tiny_benchmark(str(tmp_path / "bench")))
+    out = str(tmp_path / "out")
+    meta = runner.meta_path(out, "full_kv", entries[0])
+    os.makedirs(os.path.dirname(meta))
+    with open(meta, "w") as f:
+        json.dump({"status": "failed", "out_of_memory": True, "chunks_done": 0}, f)
+    results, _ = runner.score_all(entries, ["full_kv"], out, torch.device("cpu"), score=False)
+    assert results[0]["status"] == "failed"
+    assert results[0]["out_of_memory"] is True and results[0]["chunks_done"] == 0

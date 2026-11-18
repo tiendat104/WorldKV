@@ -7,6 +7,8 @@ already exist are skipped, so a stopped run can simply be restarted.
 Phase 2 scores all videos and writes, in the output folder:
   results.csv  one row per run (scene, trajectory, method)
   summary.csv  one row per method, like Table 1 of the paper
+With --no-score, phase 2 only collects status, speed and memory (no quality
+metrics), for runs that measure memory or speed only.
 
 Usage on a GPU machine:
   python -m eval.runner --benchmark eval/tests/fixtures/dev/benchmark.json \
@@ -377,12 +379,16 @@ def read_telemetry(path):
     return row
 
 
-def score_all(entries, methods, out_dir, device, use_fid=True):
-    """Phase 2: score every video. Returns (results rows, summary rows)."""
-    pair_metrics = PairMetrics(device)
+def score_all(entries, methods, out_dir, device, use_fid=True, score=True):
+    """Phase 2: score every video. Returns (results rows, summary rows).
+
+    With score=False, the quality metrics are skipped: rows only hold each
+    run's status, timing and the speed and memory columns from its telemetry.
+    """
+    pair_metrics = PairMetrics(device) if score else None
     results, summary = [], []
     for method in methods:
-        set_metrics = {g: SetMetrics(device) for g in METRIC_GROUPS} if use_fid else {}
+        set_metrics = {g: SetMetrics(device) for g in METRIC_GROUPS} if use_fid and score else {}
         ok_rows = []
         for entry in entries:
             row = {"scene": entry["scene"], "trajectory": entry["trajectory"], "method": method}
@@ -393,7 +399,17 @@ def score_all(entries, methods, out_dir, device, use_fid=True):
             video = video_path(out_dir, method, entry)
             if not os.path.exists(video):
                 row["status"] = meta.get("status", "missing")
+                # How far a failed run got (see run_jobs), e.g. out of GPU memory.
+                for key in ("out_of_memory", "chunks_done", "peak_gpu_mem_reserved_gb_so_far"):
+                    if key in meta:
+                        row[key] = meta[key]
                 results.append(row)
+                continue
+            if not score:
+                row["status"] = "ok"
+                row.update(read_telemetry(telemetry_path(out_dir, method, entry)))
+                results.append(row)
+                ok_rows.append(row)
                 continue
 
             print(f"[score] {method} {run_name(entry)}", flush=True)
@@ -480,6 +496,9 @@ def main():
     parser.add_argument("--dry-run", action="store_true",
                         help="Print the generation commands and stop.")
     parser.add_argument("--no-fid", action="store_true", help="Skip FID/KID (faster).")
+    parser.add_argument("--no-score", action="store_true",
+                        help="Skip all quality metrics: only status, speed and memory "
+                             "(from telemetry) go into results.csv and summary.csv.")
     parser.add_argument("--device", help="cuda, mps or cpu for scoring.")
     args = parser.parse_args()
 
@@ -501,7 +520,8 @@ def main():
         return
 
     device = torch.device(args.device) if args.device else default_device()
-    results, summary = score_all(entries, methods, out_dir, device, use_fid=not args.no_fid)
+    results, summary = score_all(entries, methods, out_dir, device, use_fid=not args.no_fid,
+                                 score=not args.no_score)
     write_csv(os.path.join(out_dir, "results.csv"), results)
     write_csv(os.path.join(out_dir, "summary.csv"), summary)
     print_summary(summary)

@@ -164,6 +164,33 @@ def test_gpu_retrieval_time_from_events(fake_gpu, tmp_path):
     assert saved["copied_gb"] == [1.0, None]
 
 
+def test_peak_gpu_memory_per_chunk_and_overall(fake_gpu, monkeypatch, tmp_path):
+    # A fake allocator: each chunk allocates up to a peak, then frees back to 2 GB.
+    gb = telemetry.GB
+    state = {"now": 2 * gb, "peak": 2 * gb}
+    cuda = telemetry.torch.cuda
+
+    def reset():
+        state["peak"] = state["now"]
+
+    monkeypatch.setattr(cuda, "reset_peak_memory_stats", lambda *a, **k: reset())
+    monkeypatch.setattr(cuda, "max_memory_allocated", lambda *a, **k: state["peak"])
+    monkeypatch.setattr(cuda, "max_memory_reserved", lambda *a, **k: state["peak"] + gb)
+    path = tmp_path / "run.telemetry.json"
+    t = telemetry.ChunkTelemetry(str(path))
+    state["peak"] = 5 * gb  # before the first chunk (e.g. allocating the KV cache)
+    for peak in (10, 12, 8):
+        t.start_chunk()
+        state["peak"] = max(state["peak"], peak * gb)
+        t.end_chunk(3)
+    t.save()
+    saved = json.loads(path.read_text())
+    assert saved["chunk_peak_gpu_mem_allocated_gb"] == [10.0, 12.0, 8.0]
+    assert saved["chunk_peak_gpu_mem_reserved_gb"] == [11.0, 13.0, 9.0]
+    assert saved["peak_gpu_mem_allocated_gb"] == [12.0]  # the run's peak, not the last chunk's
+    assert saved["peak_gpu_mem_reserved_gb"] == [13.0]
+
+
 def test_gpu_markers_default_to_current_stream(fake_gpu, tmp_path):
     t = telemetry.ChunkTelemetry(str(tmp_path / "run.telemetry.json"))
     t.start_chunk()

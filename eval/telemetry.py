@@ -17,7 +17,11 @@ What is measured:
     chunk). Model loading and VAE decoding are not included.
   - FPS per chunk = video frames in the chunk / chunk time. A chunk of 3
     latent frames is 12 video frames, except the first chunk (9 frames).
-  - GPU memory per GPU: allocated and reserved, per chunk and at the peak.
+  - GPU memory per GPU: allocated and reserved after each chunk, the peak within
+    each chunk (largest GPU), and the run's peak. For methods whose memory does
+    not depend on the video's length (e.g. WorldKV's GPU bank), the peak of
+    chunk k is the peak of a (k + 1)-chunk video, so one long run gives the
+    whole curve.
   - CPU memory (RSS) per chunk, of rank 0 and summed over all ranks (one
     process per GPU), and the true peak of each process (Linux VmHWM, reset
     when the run starts, so earlier runs of the same worker do not count).
@@ -114,6 +118,11 @@ def _sum_per_chunk(per_rank):
     return [_sum_or_none(list(values)) for values in zip(*per_rank)]
 
 
+def _max_per_chunk(per_rank):
+    """Per-chunk largest value over ranks."""
+    return [max(values) for values in zip(*per_rank)]
+
+
 class ChunkTelemetry:
 
     def __init__(self, path=None, stream=None):
@@ -125,6 +134,11 @@ class ChunkTelemetry:
         self.chunk_video_frames = []
         self.gpu_mem_allocated_gb = []
         self.gpu_mem_reserved_gb = []
+        # Peak GPU memory within each chunk (the allocator's peak is reset at every
+        # chunk start; the run's overall peak is kept in _gpu_peak).
+        self.chunk_peak_gpu_mem_allocated_gb = []
+        self.chunk_peak_gpu_mem_reserved_gb = []
+        self._gpu_peak = (0.0, 0.0)
         self.cpu_rss_gb = []
         self.bank_gb = []  # this rank's bank after each chunk is stored (None: no bank)
         self.retrieved_chunks = []
@@ -159,9 +173,23 @@ class ChunkTelemetry:
         event.record(self.stream if self.stream is not None else torch.cuda.current_stream())
         return event
 
+    def _gpu_peaks_since_reset(self):
+        return (torch.cuda.max_memory_allocated() / GB, torch.cuda.max_memory_reserved() / GB)
+
+    def _overall_gpu_peaks(self):
+        """(allocated, reserved) peak of the whole run so far, or (None, None) without a GPU."""
+        if not self.cuda:
+            return None, None
+        allocated, reserved = self._gpu_peaks_since_reset()
+        return max(self._gpu_peak[0], allocated), max(self._gpu_peak[1], reserved)
+
     def start_chunk(self):
         if not self.enabled:
             return
+        if self.cuda:
+            # Keep the run's peak so far, then measure this chunk's own peak.
+            self._gpu_peak = self._overall_gpu_peaks()
+            torch.cuda.reset_peak_memory_stats()
         self._start = self._mark()
         self._retrieval = []
         self._bank = None
@@ -210,6 +238,9 @@ class ChunkTelemetry:
         if self.cuda:
             self.gpu_mem_allocated_gb.append(torch.cuda.memory_allocated() / GB)
             self.gpu_mem_reserved_gb.append(torch.cuda.memory_reserved() / GB)
+            chunk_allocated, chunk_reserved = self._gpu_peaks_since_reset()
+            self.chunk_peak_gpu_mem_allocated_gb.append(chunk_allocated)
+            self.chunk_peak_gpu_mem_reserved_gb.append(chunk_reserved)
         self.cpu_rss_gb.append(_cpu_rss_gb())
         self.retrieved_chunks.append(self._retrieval)
         self.bank_gb.append(self._bank)
@@ -217,10 +248,12 @@ class ChunkTelemetry:
 
     def _write_progress(self):
         """This rank's memory so far, for runs that crash before save()."""
+        peak_allocated, peak_reserved = self._overall_gpu_peaks()
         progress = {
             "chunks_done": len(self.chunk_video_frames),
-            "peak_gpu_mem_allocated_gb": torch.cuda.max_memory_allocated() / GB if self.cuda else None,
-            "peak_gpu_mem_reserved_gb": torch.cuda.max_memory_reserved() / GB if self.cuda else None,
+            "peak_gpu_mem_allocated_gb": peak_allocated,
+            "peak_gpu_mem_reserved_gb": peak_reserved,
+            "chunk_peak_gpu_mem_reserved_gb": self.chunk_peak_gpu_mem_reserved_gb,
             "gpu_mem_reserved_gb": self.gpu_mem_reserved_gb,
             "cpu_rss_gb": self.cpu_rss_gb,
             "bank_gb": self.bank_gb,
@@ -233,10 +266,13 @@ class ChunkTelemetry:
             pass  # progress is a fallback; never stop generation for it
 
     def _per_rank(self):
-        """This rank's peaks and per-chunk CPU memory and bank, from every rank."""
+        """This rank's peaks and per-chunk memory and bank, from every rank."""
+        peak_allocated, peak_reserved = self._overall_gpu_peaks()
         return _gather({
-            "peak_alloc": torch.cuda.max_memory_allocated() / GB if self.cuda else None,
-            "peak_reserved": torch.cuda.max_memory_reserved() / GB if self.cuda else None,
+            "peak_alloc": peak_allocated,
+            "peak_reserved": peak_reserved,
+            "chunk_peak_alloc": self.chunk_peak_gpu_mem_allocated_gb,
+            "chunk_peak_reserved": self.chunk_peak_gpu_mem_reserved_gb,
             "cpu_rss": self.cpu_rss_gb,
             "cpu_rss_start": self.cpu_rss_start_gb,
             "cpu_hwm": _proc_status_gb("VmHWM") if self.cpu_peak_reset else None,
@@ -284,6 +320,11 @@ class ChunkTelemetry:
             "fps_per_chunk": fps,
             "gpu_mem_allocated_gb": self.gpu_mem_allocated_gb,
             "gpu_mem_reserved_gb": self.gpu_mem_reserved_gb,
+            # Peak within each chunk, largest over the GPUs (a run fails if any GPU
+            # runs out). Chunk k's value is the peak of a video of k + 1 chunks only
+            # for methods whose memory does not depend on the video's length.
+            "chunk_peak_gpu_mem_allocated_gb": _max_per_chunk([r["chunk_peak_alloc"] for r in ranks]),
+            "chunk_peak_gpu_mem_reserved_gb": _max_per_chunk([r["chunk_peak_reserved"] for r in ranks]),
             "cpu_rss_gb": self.cpu_rss_gb,  # rank 0
             "cpu_rss_total_gb": _sum_per_chunk([r["cpu_rss"] for r in ranks]),
             "bank_gb": bank_total,  # all ranks, right after each chunk is stored
