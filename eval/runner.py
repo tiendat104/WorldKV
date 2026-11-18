@@ -52,8 +52,9 @@ METHODS = {
     "full_kv": ["--full_kv"],
     "gpu_only": WORLDKV_FLAGS + ["--kv_bank_on_gpu"],
     "cpu_only": WORLDKV_FLAGS,
-    # Ours: CPU bank, each chunk freed after its last use (same video as cpu_only).
-    "offline": WORLDKV_FLAGS + ["--offline_schedule"],
+    # Ours: CPU bank, each chunk freed after its last use, next chunk's retrieved
+    # KV prefetched to the GPU (same video as cpu_only).
+    "offline": WORLDKV_FLAGS + ["--offline_schedule", "--prefetch"],
 }
 RETRIEVAL_METHODS = ("gpu_only", "cpu_only", "offline")
 # Run when --methods is not given: the replication's methods. "offline" only

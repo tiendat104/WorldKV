@@ -69,10 +69,10 @@ def test_worldkv_settings_match_paper():
     assert flag_value(gpu, "--kv_compression_keep_ratio") == "0.25"  # 3 -> 1.5 frames
     # GPU-only and CPU-only differ only in where the KV bank is stored.
     assert [a for a in gpu if a != "--kv_bank_on_gpu"] == cpu
-    # Ours is CPU-only plus the offline schedule.
+    # Ours is CPU-only plus the offline schedule and prefetch.
     offline = runner.build_command({"image": "a.png", "traj_dir": "t", "frame_num": 360,
                                     "prompt": "p"}, "offline", "v.mp4", "/ckpt", nproc=1)
-    assert [a for a in offline if a != "--offline_schedule"] == cpu
+    assert [a for a in offline if a not in ("--offline_schedule", "--prefetch")] == cpu
 
 
 def test_short_videos_rejected_for_worldkv(tmp_path):

@@ -28,6 +28,13 @@ What is measured:
     telemetry.record_retrieval(selected_ids)
     telemetry.record_bank(bank_bytes(kv_bank_k, kv_bank_v))
 
+  - Retrieval copies: bytes of retrieved data copied from CPU to GPU per chunk,
+    and the time the generation stream spends getting it onto the GPU (the copy,
+    or with prefetch only the wait for it), between
+
+    telemetry.start_retrieval()
+    telemetry.end_retrieval(copied_bytes)
+
 If a run crashes (e.g. out of GPU memory), save() never runs. So each rank
 also rewrites a small progress file after every chunk (`<path>.rank<r>.progress.json`,
 removed by save()); eval.runner reads it to report how far the run got.
@@ -121,10 +128,15 @@ class ChunkTelemetry:
         self.cpu_rss_gb = []
         self.bank_gb = []  # this rank's bank after each chunk is stored (None: no bank)
         self.retrieved_chunks = []
+        self.copied_gb = []  # this rank's retrieved data copied CPU -> GPU, per chunk
+        self.retrieval_s = []  # time the generation stream spent getting retrieved data ready
         self._retrieval = []
         self._bank = None
+        self._copied = None
+        self._retrieval_marks = (None, None)
         self._start = None
         self._events = []  # (start, end) CUDA events per chunk, read in save()
+        self._retrieval_events = []  # (start, end) or None per chunk, read in save()
         self.cpu_peak_reset = False
         self.cpu_rss_start_gb = None
         if self.enabled:
@@ -153,6 +165,20 @@ class ChunkTelemetry:
         self._start = self._mark()
         self._retrieval = []
         self._bank = None
+        self._copied = None
+        self._retrieval_marks = (None, None)
+
+    def start_retrieval(self):
+        """Before the retrieved KV is put on the GPU (copied, or waited for if prefetched)."""
+        if self.enabled:
+            self._retrieval_marks = (self._mark(), None)
+
+    def end_retrieval(self, copied_bytes):
+        """After the retrieved KV is on the GPU; `copied_bytes` were copied from CPU memory
+        for this chunk on this rank."""
+        if self.enabled:
+            self._retrieval_marks = (self._retrieval_marks[0], self._mark())
+            self._copied = copied_bytes / GB
 
     def record_retrieval(self, chunk_ids):
         """The stored chunks retrieved for the current chunk."""
@@ -169,10 +195,14 @@ class ChunkTelemetry:
         if not self.enabled:
             return
         end = self._mark()
+        marks = self._retrieval_marks if self._retrieval_marks[1] is not None else None
         if self.cuda:
             self._events.append((self._start, end))
+            self._retrieval_events.append(marks)
         else:
             self.chunk_times_s.append(end - self._start)
+            self.retrieval_s.append(marks[1] - marks[0] if marks else None)
+        self.copied_gb.append(self._copied)
         frames = VAE_STRIDE_T * latent_frames
         if not self.chunk_video_frames:
             frames -= VAE_STRIDE_T - 1  # latent frame 0 is a single video frame
@@ -211,6 +241,7 @@ class ChunkTelemetry:
             "cpu_rss_start": self.cpu_rss_start_gb,
             "cpu_hwm": _proc_status_gb("VmHWM") if self.cpu_peak_reset else None,
             "bank": self.bank_gb,
+            "copied": self.copied_gb,
         })
 
     def _read_events(self):
@@ -219,7 +250,10 @@ class ChunkTelemetry:
             return
         self._events[-1][1].synchronize()  # waits for the generation stream only
         self.chunk_times_s.extend(start.elapsed_time(end) / 1000 for start, end in self._events)
+        self.retrieval_s.extend(marks[0].elapsed_time(marks[1]) / 1000 if marks else None
+                                for marks in self._retrieval_events)
         self._events = []
+        self._retrieval_events = []
 
     def summary(self):
         self._read_events()
@@ -228,6 +262,7 @@ class ChunkTelemetry:
         total_time = sum(self.chunk_times_s)
         cpu_peaks = [r["cpu_hwm"] for r in ranks]
         bank_total = _sum_per_chunk([r["bank"] for r in ranks])
+        copied_total = _sum_per_chunk([r["copied"] for r in ranks])
         known_bank = [b for b in bank_total if b is not None]
         return {
             "num_chunks": len(self.chunk_times_s),
@@ -253,6 +288,12 @@ class ChunkTelemetry:
             "cpu_rss_total_gb": _sum_per_chunk([r["cpu_rss"] for r in ranks]),
             "bank_gb": bank_total,  # all ranks, right after each chunk is stored
             "retrieved_chunks": self.retrieved_chunks,
+            # Retrieved data copied CPU -> GPU per chunk (all ranks; None: no retrieval),
+            # and the time rank 0's generation stream spent getting it onto the GPU
+            # (the copy itself, or only the wait for a prefetched copy).
+            "copied_gb": copied_total,
+            "copied_total_gb": sum(c for c in copied_total if c is not None),
+            "retrieval_s": self.retrieval_s,
         }
 
     def save(self):

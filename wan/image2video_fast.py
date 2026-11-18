@@ -23,12 +23,15 @@ from .distributed.util import get_world_size
 from .modules.model_fast import WanModelFast, _compress_retrieval_kv
 from .modules.t5 import T5EncoderModel
 from .modules.vae2_1 import Wan2_1_VAE
+from .offline_bank import PrefetchBank
 from .retrieval_schedule import (
     bank_bytes,
     check_retrieval,
     chunks_to_free,
+    entry_bytes,
     free_chunks,
     last_uses,
+    max_live_chunks,
     retrieval_schedule,
     select_chunks,
 )
@@ -261,7 +264,8 @@ class WanI2VFast:
                  kv_compression_at_store=False,
                  kv_compression_pooled=False,
                  kv_bank_on_gpu=False,
-                 offline_schedule=False,):
+                 offline_schedule=False,
+                 prefetch=False,):
         r"""
         Generates video frames from input image and text prompt using diffusion process.
 
@@ -289,6 +293,11 @@ class WanI2VFast:
                 If True (needs retrieval and a camera path), computes every chunk's
                 retrieval before generation and frees each KV bank entry after the
                 last chunk that retrieves it. The video is unchanged.
+            prefetch (`bool`, *optional*, defaults to False):
+                With offline_schedule and the bank in CPU memory: keeps the bank in
+                fixed pinned slots and copies each chunk's retrieved chunks to the GPU
+                while the previous chunk is generated, reusing chunks already there
+                (see wan/offline_bank.py). The video is unchanged.
 
         Returns:
             torch.Tensor:
@@ -523,6 +532,14 @@ class WanI2VFast:
                                               sink_chunks, recent_chunks, num_retrieve_chunks)
                 last_use = last_uses(schedule, num_inference_chunk)
                 free_after = chunks_to_free(last_use)
+            # Prefetch: the bank lives in fixed pinned CPU slots, and each chunk's
+            # retrieved chunks are copied to the GPU while the previous chunk runs.
+            prefetch_bank = None
+            if prefetch:
+                if not offline_schedule or kv_bank_on_gpu:
+                    raise ValueError("prefetch needs offline_schedule and the bank in CPU memory.")
+                prefetch_bank = PrefetchBank(model_args.num_layers, max_live_chunks(last_use),
+                                             num_retrieve_chunks, self.device)
             for chunk_id in tqdm(range(num_inference_chunk)):
                 telemetry.start_chunk()
                 current_latent = latents_chunk[chunk_id]
@@ -564,10 +581,19 @@ class WanI2VFast:
                         # Source frame IDs for RoPE correction
                         src_frame_ids = [sid * chunk_size for sid in selected_ids]
 
+                        telemetry.start_retrieval()
+                        if prefetch_bank is not None:
+                            prefetch_bank.use(selected_ids)  # waits only if copies are not done
+                            copied_bytes = prefetch_bank.cpu_bytes_last
+                        else:
+                            copied_bytes = entry_bytes(kv_bank_k, kv_bank_v, selected_ids)
                         retrieval_kv = []
                         for layer_idx in range(model_args.num_layers):
-                            retr_k = torch.cat([kv_bank_k[layer_idx][i].to(self.device) for i in selected_ids], dim=1)
-                            retr_v = torch.cat([kv_bank_v[layer_idx][i].to(self.device) for i in selected_ids], dim=1)
+                            if prefetch_bank is not None:
+                                retr_k, retr_v = prefetch_bank.retrieved(layer_idx)
+                            else:
+                                retr_k = torch.cat([kv_bank_k[layer_idx][i].to(self.device) for i in selected_ids], dim=1)
+                                retr_v = torch.cat([kv_bank_v[layer_idx][i].to(self.device) for i in selected_ids], dim=1)
                             # If compression was applied at store time, skip retrieval-time
                             # compression; the bank entries are already pruned.
                             runtime_compress = (kv_compression_enable and not kv_compression_at_store)
@@ -582,6 +608,7 @@ class WanI2VFast:
                                 'stored_compressed': (kv_compression_enable and kv_compression_at_store),
                                 'recent_frames': recent_frames,
                             })
+                        telemetry.end_retrieval(copied_bytes)
 
                 if use_retrieval and retrieval_kv is None:
                     cs_dbg = chunk_id * chunk_size
@@ -597,6 +624,11 @@ class WanI2VFast:
                     #     f"No retrieval (bank={bank_len}) | "
                     #     f"Window: {window_f}",
                     #     flush=True)
+
+                # Start copying the next chunk's retrieved chunks; this runs on a separate
+                # CUDA stream while this chunk is generated (queued below).
+                if prefetch_bank is not None and chunk_id + 1 < num_inference_chunk:
+                    prefetch_bank.prefetch(schedule[chunk_id + 1])
 
                 effective_max_attn = kv_size if max_attention_size is None else max_attention_size
                 kwargs = {
@@ -674,12 +706,20 @@ class WanI2VFast:
                                 sp_reduce=(self.sp_size > 1),
                                 pooled=kv_compression_pooled,
                             )
-                        kv_bank_k[layer_idx].append(k_slice.to(bank_device).clone())
-                        kv_bank_v[layer_idx].append(v_slice.to(bank_device).clone())
+                        if prefetch_bank is not None:
+                            # Into the chunk's pinned slot; the bank keeps views of it.
+                            k_store, v_store = prefetch_bank.store(chunk_id, layer_idx, k_slice, v_slice)
+                        else:
+                            k_store = k_slice.to(bank_device).clone()
+                            v_store = v_slice.to(bank_device).clone()
+                        kv_bank_k[layer_idx].append(k_store)
+                        kv_bank_v[layer_idx].append(v_store)
                     # The bank is largest here: the new chunk is in, nothing freed yet.
                     telemetry.record_bank(bank_bytes(kv_bank_k, kv_bank_v))
                     if free_after is not None:
                         free_chunks(kv_bank_k, kv_bank_v, free_after[chunk_id])
+                        if prefetch_bank is not None:
+                            prefetch_bank.free(free_after[chunk_id])
                     if store_compress and chunk_id == 0 and kv_bank_k[0][0] is not None:
                         stored_tokens = kv_bank_k[0][0].shape[1]
                         _mode = "pooled" if kv_compression_pooled else "per-frame"
@@ -688,12 +728,14 @@ class WanI2VFast:
                 telemetry.end_chunk(chunk_size)
 
             telemetry.save()
+            if prefetch_bank is not None:
+                prefetch_bank.close()  # unpin the CPU slots before they are freed below
             pred_latent_chunks = torch.cat(pred_latent_chunks, dim=1)
             # Free the generation caches (KV cache, retrieval bank) before decoding:
             # decoding only needs pred_latent_chunks, and on 46 GB GPUs it ran out of
             # memory while they were still held.
             self_kv_cache = cross_kv_cache = kv_bank_k = kv_bank_v = None
-            retrieval_kv = kwargs = None
+            retrieval_kv = kwargs = prefetch_bank = None
             torch.cuda.empty_cache()
 
             if offload_model:

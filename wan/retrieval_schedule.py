@@ -93,6 +93,16 @@ def last_uses(schedule, num_chunks):
     return last
 
 
+def max_live_chunks(last_use):
+    """Most chunks the offline bank holds at once.
+
+    Chunk t is stored before the chunks last used at t are freed, so right
+    after storing chunk t the bank holds every chunk c <= t with last use >= t.
+    """
+    return max(sum(1 for c in range(t + 1) if last_use[c] >= t)
+               for t in range(len(last_use)))
+
+
 def chunks_to_free(last_use):
     """For each chunk t, the stored chunks to free once chunk t is generated."""
     free_after = [[] for _ in last_use]
@@ -122,6 +132,12 @@ def check_retrieval(chunk_id, selected_ids, planned_ids, bank_layer):
     missing = [cid for cid in selected_ids if bank_layer[cid] is None]
     if missing:
         raise RuntimeError(f"chunk {chunk_id}: chunks {missing} were freed but are needed")
+
+
+def entry_bytes(kv_bank_k, kv_bank_v, chunk_ids):
+    """Bytes of the given chunks over all layers, K and V (what a retrieval copies)."""
+    return sum(layer[cid].numel() * layer[cid].element_size()
+               for layer in kv_bank_k + kv_bank_v for cid in chunk_ids)
 
 
 def bank_bytes(kv_bank_k, kv_bank_v):

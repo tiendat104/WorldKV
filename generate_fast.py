@@ -123,6 +123,9 @@ def _validate_args(args):
     )
     if args.offline_schedule:
         assert args.use_retrieval, "--offline_schedule requires --use_retrieval."
+    if args.prefetch:
+        assert args.offline_schedule and not args.kv_bank_on_gpu, \
+            "--prefetch requires --offline_schedule and the bank in CPU memory."
 
 
 def _parse_args():
@@ -295,6 +298,12 @@ def _parse_args():
         help="Compute every chunk's retrieval from the camera path before generation "
              "and free each KV bank entry after its last use (same video, smaller bank). "
              "Requires --use_retrieval.")
+    parser.add_argument(
+        "--prefetch",
+        action="store_true",
+        default=False,
+        help="With --offline_schedule (bank in CPU memory): copy each chunk's retrieved KV "
+             "to the GPU while the previous chunk is generated, reusing chunks already there.")
     args = parser.parse_args()
     _validate_args(args)
 
@@ -409,7 +418,8 @@ def generate(args):
         kv_compression_at_store=args.kv_compression_at_store,
         kv_compression_pooled=args.kv_compression_pooled,
         kv_bank_on_gpu=args.kv_bank_on_gpu,
-        offline_schedule=args.offline_schedule)
+        offline_schedule=args.offline_schedule,
+        prefetch=args.prefetch)
 
     if rank == 0:
         os.makedirs(args.save_dir, exist_ok=True)

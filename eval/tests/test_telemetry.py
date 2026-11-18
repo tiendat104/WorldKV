@@ -63,6 +63,24 @@ def test_records_retrieval_and_bank_per_chunk(monkeypatch, tmp_path):
     assert len(saved["cpu_rss_total_gb"]) == 5
 
 
+def test_records_retrieval_copies(monkeypatch, tmp_path):
+    path = tmp_path / "run.telemetry.json"
+    monkeypatch.setenv(telemetry.ENV_VAR, str(path))
+    t = telemetry.ChunkTelemetry.from_env()
+    t.start_chunk()
+    t.end_chunk(3)  # no retrieval
+    for copied in (2 * telemetry.GB, 0.5 * telemetry.GB):
+        t.start_chunk()
+        t.start_retrieval()
+        time.sleep(0.01)
+        t.end_retrieval(copied)
+        t.end_chunk(3)
+    t.save()
+    saved = json.loads(path.read_text())
+    assert saved["copied_gb"] == [None, 2.0, 0.5] and saved["copied_total_gb"] == 2.5
+    assert saved["retrieval_s"][0] is None and all(s >= 0.01 for s in saved["retrieval_s"][1:])
+
+
 def test_progress_file_kept_until_save(monkeypatch, tmp_path):
     # A run that crashes never reaches save(); its progress file says how far it got.
     path = tmp_path / "run.telemetry.json"
@@ -131,6 +149,21 @@ def test_gpu_times_come_from_events_without_waiting(fake_gpu, tmp_path):
     assert saved["fps_last_chunk"] == pytest.approx(12 / 0.5)
 
 
+def test_gpu_retrieval_time_from_events(fake_gpu, tmp_path):
+    path = tmp_path / "run.telemetry.json"
+    t = telemetry.ChunkTelemetry(str(path), stream="generation")
+    t.start_chunk()
+    t.start_retrieval()  # each FakeEvent.record advances the clock by 0.5 s
+    t.end_retrieval(telemetry.GB)
+    t.end_chunk(3)
+    t.start_chunk()
+    t.end_chunk(3)
+    t.save()
+    saved = json.loads(path.read_text())
+    assert saved["retrieval_s"][0] == pytest.approx(0.5) and saved["retrieval_s"][1] is None
+    assert saved["copied_gb"] == [1.0, None]
+
+
 def test_gpu_markers_default_to_current_stream(fake_gpu, tmp_path):
     t = telemetry.ChunkTelemetry(str(tmp_path / "run.telemetry.json"))
     t.start_chunk()
@@ -146,6 +179,8 @@ def _distributed_worker(rank, world_size, path, port):
     t = telemetry.ChunkTelemetry.from_env()
     t.start_chunk()
     t.record_bank((rank + 1) * telemetry.GB)  # each rank holds its own part of the bank
+    t.start_retrieval()
+    t.end_retrieval((rank + 1) * telemetry.GB)
     t.end_chunk(3)
     t.save()  # every rank calls save(); only rank 0 writes
     dist.destroy_process_group()
@@ -165,6 +200,7 @@ def test_save_with_several_processes(tmp_path):
     assert len(saved["peak_gpu_mem_allocated_gb"]) == 2
     # Bank and CPU memory are totals over both processes.
     assert saved["bank_gb"] == [3.0] and saved["peak_bank_gb"] == 3.0
+    assert saved["copied_gb"] == [3.0]
     assert len(saved["cpu_rss_total_gb"]) == 1 and len(saved["peak_cpu_rss_gb_per_rank"]) == 2
     assert sorted(os.listdir(tmp_path)) == ["run.telemetry.json"]  # progress files removed
 
