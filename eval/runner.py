@@ -52,8 +52,13 @@ METHODS = {
     "full_kv": ["--full_kv"],
     "gpu_only": WORLDKV_FLAGS + ["--kv_bank_on_gpu"],
     "cpu_only": WORLDKV_FLAGS,
+    # Ours: CPU bank, each chunk freed after its last use (same video as cpu_only).
+    "offline": WORLDKV_FLAGS + ["--offline_schedule"],
 }
-RETRIEVAL_METHODS = ("gpu_only", "cpu_only")
+RETRIEVAL_METHODS = ("gpu_only", "cpu_only", "offline")
+# Run when --methods is not given: the replication's methods. "offline" only
+# runs when asked for, so existing commands do not generate (and pay for) more.
+DEFAULT_METHODS = ("sliding", "full_kv", "gpu_only", "cpu_only")
 # WorldKV's attention window in latent frames: sink (3) + retrieved (18) +
 # recent (6), see image2video_fast.py. The code sizes "recent" as what is left
 # of the cache after sink and retrieval, and caps the cache at the video
@@ -423,8 +428,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--benchmark", required=True, help="Benchmark JSON file.")
     parser.add_argument("--out", required=True, help="Output folder.")
-    parser.add_argument("--methods", default=",".join(METHODS),
-                        help=f"Comma-separated, from: {', '.join(METHODS)}.")
+    parser.add_argument("--methods", default=",".join(DEFAULT_METHODS),
+                        help=f"Comma-separated, from: {', '.join(METHODS)} "
+                             f"(default: {', '.join(DEFAULT_METHODS)}).")
     parser.add_argument("--ckpt-dir", help="LingBot checkpoint folder (real runs).")
     parser.add_argument("--nproc", type=int, default=4, help="GPUs per run.")
     parser.add_argument("--seed", type=int, default=42)

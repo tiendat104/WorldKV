@@ -136,7 +136,8 @@ def main():
             kv_compression_anchor_rotate=args.kv_compression_anchor_rotate,
             kv_compression_at_store=args.kv_compression_at_store,
             kv_compression_pooled=args.kv_compression_pooled,
-            kv_bank_on_gpu=args.kv_bank_on_gpu)
+            kv_bank_on_gpu=args.kv_bank_on_gpu,
+            offline_schedule=args.offline_schedule)
 
         if rank == 0:
             os.makedirs(os.path.dirname(job["save_file"]), exist_ok=True)

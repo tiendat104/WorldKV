@@ -23,6 +23,14 @@ from .distributed.util import get_world_size
 from .modules.model_fast import WanModelFast, _compress_retrieval_kv
 from .modules.t5 import T5EncoderModel
 from .modules.vae2_1 import Wan2_1_VAE
+from .retrieval_schedule import (
+    check_retrieval,
+    chunks_to_free,
+    free_chunks,
+    last_uses,
+    retrieval_schedule,
+    select_chunks,
+)
 
 from .utils.fm_solvers_unipc import FlowUniPCMultistepScheduler
 from .utils.cam_utils import (
@@ -251,7 +259,8 @@ class WanI2VFast:
                  kv_compression_anchor_rotate=False,
                  kv_compression_at_store=False,
                  kv_compression_pooled=False,
-                 kv_bank_on_gpu=False,):
+                 kv_bank_on_gpu=False,
+                 offline_schedule=False,):
         r"""
         Generates video frames from input image and text prompt using diffusion process.
 
@@ -275,6 +284,10 @@ class WanI2VFast:
                 Random seed for noise generation. If -1, use random seed
             offload_model (`bool`, *optional*, defaults to True):
                 If True, offloads models to CPU during generation to save VRAM
+            offline_schedule (`bool`, *optional*, defaults to False):
+                If True (needs retrieval and a camera path), computes every chunk's
+                retrieval before generation and frees each KV bank entry after the
+                last chunk that retrieves it. The video is unchanged.
 
         Returns:
             torch.Tensor:
@@ -493,6 +506,22 @@ class WanI2VFast:
             num_inference_chunk = len(latents_chunk)
             pred_latent_chunks = []
             telemetry = ChunkTelemetry.from_env()
+            # Retrieval window in chunks (the same for every chunk)
+            model_sink_size = getattr(self.model.config, 'sink_size', 0)
+            sink_chunks = (model_sink_size + chunk_size - 1) // chunk_size
+            recent_frames = max(0, kv_size // frame_seqlen - model_sink_size - retrieval_frames)
+            recent_chunks = max(1, recent_frames // chunk_size)
+            num_retrieve_chunks = retrieval_frames // chunk_size
+            # Offline mode: the camera path is known, so every chunk's retrieval is
+            # computed up front and each bank entry is freed after its last use.
+            free_after = None
+            if offline_schedule:
+                if not (use_retrieval and action_path is not None):
+                    raise ValueError("offline_schedule needs retrieval and a camera path.")
+                schedule = retrieval_schedule(c2ws_infer_abs, num_inference_chunk, chunk_size,
+                                              sink_chunks, recent_chunks, num_retrieve_chunks)
+                last_use = last_uses(schedule, num_inference_chunk)
+                free_after = chunks_to_free(last_use)
             for chunk_id in tqdm(range(num_inference_chunk)):
                 telemetry.start_chunk()
                 current_latent = latents_chunk[chunk_id]
@@ -506,51 +535,16 @@ class WanI2VFast:
                 # Retrieval: select chunks from bank by camera pose similarity.
                 retrieval_kv = None
                 if use_retrieval and action_path is not None and len(kv_bank_k[0]) > 0:
-                    model_sink_size = getattr(self.model.config, 'sink_size', 0)
-                    sink_chunks = (model_sink_size + chunk_size - 1) // chunk_size
-                    recent_frames = max(0, kv_size // frame_seqlen - model_sink_size - retrieval_frames)
-                    recent_chunks = max(1, recent_frames // chunk_size)
-                    num_retrieve_chunks = retrieval_frames // chunk_size
-
-                    # Current chunk average pose (absolute)
                     cs = chunk_id * chunk_size
                     ce = min(cs + chunk_size, c2ws_infer_abs.shape[0])
-                    current_trans = c2ws_infer_abs[cs:ce, :3, 3].mean(dim=0)
-                    current_rot = c2ws_infer_abs[cs:ce, :3, :3].mean(dim=0)
+                    # Closest stored chunks by camera pose (sink and recent excluded)
+                    selected_ids = select_chunks(c2ws_infer_abs, chunk_id, chunk_size,
+                                                 sink_chunks, recent_chunks, num_retrieve_chunks,
+                                                 bank_len=len(kv_bank_k[0]))
+                    if free_after is not None:
+                        check_retrieval(chunk_id, selected_ids, schedule[chunk_id], kv_bank_k[0])
 
-                    # Candidate chunks: exclude sink and recent
-                    recent_start_chunk = max(sink_chunks, chunk_id - recent_chunks)
-                    candidate_ids = []
-                    candidate_trans = []
-                    candidate_rots = []
-                    for cid in range(sink_chunks, recent_start_chunk):
-                        if cid < len(kv_bank_k[0]):
-                            s = cid * chunk_size
-                            e = min(s + chunk_size, c2ws_infer_abs.shape[0])
-                            candidate_ids.append(cid)
-                            candidate_trans.append(c2ws_infer_abs[s:e, :3, 3].mean(dim=0))
-                            candidate_rots.append(c2ws_infer_abs[s:e, :3, :3].mean(dim=0))
-
-                    if candidate_ids and num_retrieve_chunks > 0:
-                        # Translation L2 distance
-                        candidate_trans = torch.stack(candidate_trans).to(current_trans.device)
-                        trans_dist = ((candidate_trans - current_trans) ** 2).sum(dim=-1)
-
-                        # Rotation geodesic distance: arccos((trace(R1^T @ R2) - 1) / 2)
-                        candidate_rots = torch.stack(candidate_rots).to(current_rot.device)
-                        rel_rot = candidate_rots.transpose(-1, -2) @ current_rot.unsqueeze(0)
-                        trace_val = rel_rot.diagonal(dim1=-2, dim2=-1).sum(dim=-1)  # [N]
-                        cos_angle = (trace_val - 1.0) / 2.0
-                        rot_dist = torch.acos(cos_angle.clamp(-1.0, 1.0))  # [N], radians
-
-                        # Normalize each to [0, 1] then combine
-                        trans_norm = trans_dist / trans_dist.max() if trans_dist.max() > 0 else trans_dist
-                        rot_norm = rot_dist / rot_dist.max() if rot_dist.max() > 0 else rot_dist
-                        distances = 0.5 * trans_norm + 0.5 * rot_norm
-
-                        k = min(num_retrieve_chunks, len(candidate_ids))
-                        _, top_idx = distances.topk(k, largest=False)
-                        selected_ids = [candidate_ids[i] for i in top_idx.tolist()]
+                    if selected_ids:
                         retr_frames = [sid * chunk_size for sid in selected_ids]
                         # Compute window frame indices
                         sink_f = list(range(model_sink_size))
@@ -562,9 +556,7 @@ class WanI2VFast:
                         # print(
                         #     f"[Chunk {chunk_id}/{num_inference_chunk}] "
                         #     f"Generating frames {cs}-{ce-1} | "
-                        #     f"Window: sink={sink_f} retr={retr_f} recent={recent_f} | "
-                        #     f"trans_dist={[f'{d:.4f}' for d in trans_dist[top_idx].tolist()]} "
-                        #     f"rot_dist_deg={[f'{d:.1f}' for d in torch.rad2deg(rot_dist[top_idx]).tolist()]}",
+                        #     f"Window: sink={sink_f} retr={retr_f} recent={recent_f}",
                         #     flush=True)
 
                         # Source frame IDs for RoPE correction
@@ -659,6 +651,11 @@ class WanI2VFast:
                     bank_device = self.device if kv_bank_on_gpu else torch.device('cpu')
                     store_compress = (kv_compression_enable and kv_compression_at_store)
                     for layer_idx, lc in enumerate(self_kv_cache):
+                        if free_after is not None and last_use[chunk_id] < 0:
+                            # Never retrieved: keep the slot (list index = chunk id), not the KV
+                            kv_bank_k[layer_idx].append(None)
+                            kv_bank_v[layer_idx].append(None)
+                            continue
                         local_end = lc['local_end_index'].item()
                         k_slice = lc['k'][:, local_end - chunk_tokens:local_end].detach()
                         v_slice = lc['v'][:, local_end - chunk_tokens:local_end].detach()
@@ -677,7 +674,9 @@ class WanI2VFast:
                             )
                         kv_bank_k[layer_idx].append(k_slice.to(bank_device).clone())
                         kv_bank_v[layer_idx].append(v_slice.to(bank_device).clone())
-                    if store_compress and chunk_id == 0:
+                    if free_after is not None:
+                        free_chunks(kv_bank_k, kv_bank_v, free_after[chunk_id])
+                    if store_compress and chunk_id == 0 and kv_bank_k[0][0] is not None:
                         stored_tokens = kv_bank_k[0][0].shape[1]
                         _mode = "pooled" if kv_compression_pooled else "per-frame"
                     #     print(f"[Debug] store-time compression on ({_mode}): {chunk_tokens} -> {stored_tokens} tokens/chunk/layer", flush=True)

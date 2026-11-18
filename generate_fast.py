@@ -121,6 +121,8 @@ def _validate_args(args):
         sliding_window=args.sliding_window,
         use_retrieval=args.use_retrieval,
     )
+    if args.offline_schedule:
+        assert args.use_retrieval, "--offline_schedule requires --use_retrieval."
 
 
 def _parse_args():
@@ -286,6 +288,13 @@ def _parse_args():
         action="store_true",
         default=False,
         help="Keep retrieval KV bank on GPU (disable CPU offload). Requires ample VRAM.")
+    parser.add_argument(
+        "--offline_schedule",
+        action="store_true",
+        default=False,
+        help="Compute every chunk's retrieval from the camera path before generation "
+             "and free each KV bank entry after its last use (same video, smaller bank). "
+             "Requires --use_retrieval.")
     args = parser.parse_args()
     _validate_args(args)
 
@@ -399,7 +408,8 @@ def generate(args):
         kv_compression_anchor_rotate=args.kv_compression_anchor_rotate,
         kv_compression_at_store=args.kv_compression_at_store,
         kv_compression_pooled=args.kv_compression_pooled,
-        kv_bank_on_gpu=args.kv_bank_on_gpu)
+        kv_bank_on_gpu=args.kv_bank_on_gpu,
+        offline_schedule=args.offline_schedule)
 
     if rank == 0:
         os.makedirs(args.save_dir, exist_ok=True)
