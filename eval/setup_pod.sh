@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Prepare a fresh RunPod pod (PyTorch 2.8.0 template) for the evaluation harness.
 #
-# Everything goes on the network volume (/workspace), so it survives the pod:
+# Everything goes in /workspace: a network volume if one is attached (it then
+# survives the pod), otherwise the pod's own disk (erased when the pod stops):
 #   /workspace/WorldKV                         code (eval-harness branch)
 #   /workspace/venv                            Python environment (uses the template's PyTorch)
 #   /workspace/models/lingbot-world-base-cam   the 4 model parts LingBot-World-Fast needs (~81 GB)
@@ -32,7 +33,11 @@ git -C "$WS/WorldKV" log -1 --format='code at %h %s'
 step "2/6 Python environment ($VENV)"
 [ -x "$PY" ] || python -m venv --system-site-packages "$VENV"
 grep -v flash_attn "$WS/WorldKV/requirements.txt" > /tmp/requirements_no_flash_attn.txt
-"$PY" -m pip install -q -r /tmp/requirements_no_flash_attn.txt -r "$WS/WorldKV/eval/requirements.txt" \
+# transformers <= 4.51.3 (requirements.txt) needs huggingface_hub < 1.0. Without
+# saying so, pip tries every newer huggingface_hub release (2.x, 1.x) one by one.
+echo "huggingface_hub<1.0" > /tmp/pip_constraints.txt
+"$PY" -m pip install -q -c /tmp/pip_constraints.txt \
+  -r /tmp/requirements_no_flash_attn.txt -r "$WS/WorldKV/eval/requirements.txt" \
   "huggingface_hub[cli]" ninja packaging
 "$PY" -c "import torch, numpy; print('torch', torch.__version__, '| numpy', numpy.__version__)"
 
@@ -84,7 +89,11 @@ q = torch.randn(1, 128, 8, 64, device='cuda', dtype=torch.bfloat16)
 print('flash_attn', flash_attn.__version__, 'works on', torch.cuda.get_device_name())
 flash_attn_func(q, q, q)"
 cd "$WS/WorldKV"
-"$PY" -m pytest eval/tests -q -W ignore 2>&1 | tail -n 1
+# Report failing tests, but finish the setup (the GPU check below still matters).
+"$PY" -m pytest eval/tests -q -W ignore > /tmp/setup_tests.log 2>&1 \
+  || echo "SOME TESTS FAILED (setup continues; full output in /tmp/setup_tests.log):"
+grep "^FAILED" /tmp/setup_tests.log || true
+tail -n 1 /tmp/setup_tests.log
 NGPU=$(nvidia-smi -L | wc -l)
 if [ "$NGPU" -gt 1 ]; then
   echo "GPU communication test on $NGPU GPUs (default settings):"

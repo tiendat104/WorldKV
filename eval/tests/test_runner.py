@@ -153,6 +153,37 @@ def test_worker_restarted_after_a_crash(tmp_path):
     assert jobs[0]["meta_fields"]["command"][-len(jobs[0]["argv"]):] == jobs[0]["argv"]
 
 
+def test_fresh_worker_runs_each_video_in_its_own_process(tmp_path):
+    entries = runner.load_benchmark(DEV_BENCHMARK)[:3]
+    out = str(tmp_path / "out")
+    args = argparse.Namespace(fake=False, dry_run=False, seed=42, ckpt_dir="/ckpt",
+                              nproc=4, no_p2p=True, fresh_worker=True)
+    jobs = [runner.make_job(e, "offline", out, args) for e in entries]
+    calls = []
+
+    def fake_worker(jobs_file, log_path, args):
+        # Crashes on the second video; finishes the others.
+        with open(jobs_file) as f:
+            todo = json.load(f)
+        calls.append([j["name"] for j in todo])
+        job = todo[0]
+        os.makedirs(os.path.dirname(job["meta"]), exist_ok=True)
+        with open(job["meta"], "w") as f:
+            json.dump({"status": "running"}, f)
+        if job["name"] == jobs[1]["name"]:
+            return 1
+        os.makedirs(os.path.dirname(job["save_file"]), exist_ok=True)
+        open(job["save_file"], "w").close()
+        with open(job["meta"], "w") as f:
+            json.dump({"status": "done"}, f)
+        return 0
+
+    runner.run_jobs(jobs, out, args, launch=fake_worker)
+    assert calls == [[j["name"]] for j in jobs]  # one worker per video, in order
+    assert runner.read_json(jobs[1]["meta"])["status"] == "failed"
+    assert os.path.exists(jobs[2]["save_file"])
+
+
 def test_failed_run_records_progress_and_out_of_memory(tmp_path):
     entries = runner.load_benchmark(DEV_BENCHMARK)[:2]
     out = str(tmp_path / "out")

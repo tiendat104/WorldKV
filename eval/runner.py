@@ -4,6 +4,8 @@ Phase 1 generates every missing video with eval/worker.py, which loads the
 model once and then runs the same generation as WorldKV's generate_fast.py
 for each video; or with a fake model on a laptop (--fake). Videos that
 already exist are skipped, so a stopped run can simply be restarted.
+With --fresh-worker, each video gets its own worker process instead, so CPU
+memory is measured without what earlier videos left in the process.
 Phase 2 scores all videos and writes, in the output folder:
   results.csv  one row per run (scene, trajectory, method)
   summary.csv  one row per method, like Table 1 of the paper
@@ -274,6 +276,10 @@ def run_jobs(jobs, out_dir, args, launch=launch_worker):
     One worker loads the model and runs every job. If it stops early (e.g. a
     video runs out of GPU memory), the job it was on is marked failed and a
     new worker runs the rest.
+
+    With args.fresh_worker, every job gets its own worker process instead, so
+    its CPU memory does not include what earlier jobs freed but the process
+    kept (the model is then loaded once per job).
     """
     failed = set()
     attempt = 0
@@ -281,6 +287,8 @@ def run_jobs(jobs, out_dir, args, launch=launch_worker):
         todo = [j for j in jobs if not os.path.exists(j["save_file"]) and j["name"] not in failed]
         if not todo:
             break
+        if getattr(args, "fresh_worker", False):
+            todo = todo[:1]
         attempt += 1
         jobs_file = os.path.join(out_dir, "runs", f"jobs_{attempt}.json")
         log_path = os.path.join(out_dir, "runs", f"worker_{attempt}.log")
@@ -290,7 +298,7 @@ def run_jobs(jobs, out_dir, args, launch=launch_worker):
         for job in todo:  # left by an earlier crashed attempt; would be misread
             for path in progress_files(job):
                 os.remove(path)
-        print(f"[worker] {len(todo)} videos, model loaded once (log: {log_path})", flush=True)
+        print(f"[worker] {len(todo)} video(s), model loaded once (log: {log_path})", flush=True)
         returncode = launch(jobs_file, log_path, args)
 
         progress = False
@@ -347,7 +355,9 @@ def generate_all(entries, methods, out_dir, args, launch=launch_worker):
             jobs.append(job)
 
     if args.dry_run and jobs:
-        print(f"(real runs use one worker for all {len(jobs)} videos: "
+        workers = ("one worker per video" if getattr(args, "fresh_worker", False)
+                   else f"one worker for all {len(jobs)} videos")
+        print(f"(real runs use {workers}: "
               f"{shlex.join(launcher(args.nproc) + ['-m', 'eval.worker', 'JOBS.json'])})")
     if jobs and not args.dry_run:
         run_jobs(jobs, out_dir, args, launch)
@@ -496,6 +506,10 @@ def main():
     parser.add_argument("--dry-run", action="store_true",
                         help="Print the generation commands and stop.")
     parser.add_argument("--no-fid", action="store_true", help="Skip FID/KID (faster).")
+    parser.add_argument("--fresh-worker", action="store_true",
+                        help="Start a new worker process (and load the model) for every "
+                             "video, so each run's CPU memory starts clean. Use for "
+                             "CPU-memory measurements; costs one model load (~2 min) per video.")
     parser.add_argument("--no-score", action="store_true",
                         help="Skip all quality metrics: only status, speed and memory "
                              "(from telemetry) go into results.csv and summary.csv.")
