@@ -1,0 +1,36 @@
+{
+ "name": "e2_full_kv",
+ "images_dir": "../benchmark/final_images",
+ "prompts": "../benchmark/prompts.json",
+ "traj_dir": "paths",
+ "pairs": [
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "R_L_R_L_R_L_R_L90_105"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "R_L_R_L_R_L_R_L90_213"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "R_L_R_L_R_L_R_L90_309"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "R_L_R_L_R_L_R_L90_321"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "R_L_R_L_R_L_R_L90_333"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "R_L_R_L_R_L_R_L90_345"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "R_L_R_L_R_L_R_L90_357"
+  }
+ ]
+}

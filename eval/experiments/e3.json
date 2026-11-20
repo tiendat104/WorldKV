@@ -1,0 +1,24 @@
+{
+ "name": "e3",
+ "images_dir": "../benchmark/final_images",
+ "prompts": "../benchmark/prompts.json",
+ "traj_dir": "paths",
+ "pairs": [
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "inspect_645"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "tour_645"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "return_645"
+  },
+  {
+   "scene": "00_R_L_R_L_R_L90_360_compressed",
+   "trajectory": "street_645"
+  }
+ ]
+}

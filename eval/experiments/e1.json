@@ -1,0 +1,24 @@
+{
+ "name": "e1",
+ "images_dir": "../benchmark/final_images",
+ "prompts": "../benchmark/prompts.json",
+ "traj_dir": "../benchmark/traj",
+ "pairs": [
+  {
+   "scene": "04_RLWSRL90_245",
+   "trajectory": "RLWSRL90_245"
+  },
+  {
+   "scene": "24_WSRLRL90_245",
+   "trajectory": "WSRLRL90_245"
+  },
+  {
+   "scene": "20_R_L_W_S_R_L90_318",
+   "trajectory": "R_L_W_S_R_L90_318"
+  },
+  {
+   "scene": "21_L_R_W_S_L_R90_318",
+   "trajectory": "L_R_W_S_L_R90_318"
+  }
+ ]
+}
