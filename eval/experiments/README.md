@@ -20,6 +20,7 @@ reusing what is already there). Code version: tag `phase1-done`.
 | `prepare.py` | Writes all camera paths (`paths/`) and run lists (`*.json`): `python -m eval.experiments.prepare` |
 | `predict.py` | Predicts each run's bank, CPU -> GPU copies and GPU memory before running: `python -m eval.experiments.predict` |
 | `run_experiments.sh` | Runs E1, E2, E3 on a 4x A40 pod set up with `eval/setup_pod.sh` (each video in its own process, no quality metrics) |
+| `analyze.py` | Turns the results into the report's tables (`e1.md`, `e2.md`, `e3.md`) and the E2 figure (`e2_gpu_memory.png/.pdf`, needs matplotlib): `python -m eval.experiments.analyze <results folder>` |
 | `paths/` | Camera paths: `R_L_R_L_R_L_R_L90_<frames>` (E2, made with generate_traj.py; shorter ones are its first frames), `<scenario>_645` (E3) |
 
 ## E3 camera paths
@@ -46,3 +47,7 @@ Results go to `/workspace/experiments/<e1|e2_long|e2_full_kv|e3>/`. Each
 experiment's log ends with `=== <experiment> done`; E1 and E3 also get
 `checks.txt` (identical videos and bank sizes, from `eval/check_offline.py`).
 `DRY_RUN=1` prints the commands without running anything.
+
+Afterwards, on a machine with the results (no GPU needed; matplotlib for the figure):
+
+    python -m eval.experiments.analyze <results folder>    # writes <results folder>/analysis/
