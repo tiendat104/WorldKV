@@ -81,7 +81,9 @@ EOF
 
 step "6/6 Machine checks"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
-nvidia-smi topo -m | head -n "$(( $(nvidia-smi -L | wc -l) + 1 ))"
+# head stops reading early when the table has more rows (e.g. network cards); with
+# pipefail, nvidia-smi's resulting SIGPIPE would otherwise abort the setup here.
+nvidia-smi topo -m | head -n "$(( $(nvidia-smi -L | wc -l) + 1 ))" || true
 "$PY" -c "
 import torch, flash_attn
 from flash_attn import flash_attn_func
